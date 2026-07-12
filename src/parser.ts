@@ -9,6 +9,8 @@ export interface ScheduleEvent {
   startMinutes: number;
   endMinutes: number;
   raw: string;
+  /** 원문에서의 0-based 줄 번호. 동일한 일정 줄을 정확히 한 건만 편집하는 데 사용. */
+  sourceLine?: number;
 }
 
 const SCHEDULE_REGEX = /^- (\d{2}):(\d{2})\s*[-–]\s*(\d{2}):(\d{2})\s+(.+)$/;
@@ -21,12 +23,13 @@ export function colorForTag(tag: string): string {
   return TAG_PALETTE[h % TAG_PALETTE.length];
 }
 
-export function parseSchedules(content: string, sectionName = 'Schedules'): ScheduleEvent[] {
+export function parseSchedules(content: string, sectionName = 'Schedule'): ScheduleEvent[] {
   const events: ScheduleEvent[] = [];
-  const lines = content.split('\n');
+  const lines = content.split(/\r?\n/);
   let inSection = false;
 
-  for (const line of lines) {
+  for (let sourceLine = 0; sourceLine < lines.length; sourceLine++) {
+    const line = lines[sourceLine];
     if (line.trim() === `### ${sectionName}`) { inSection = true; continue; }
     if (inSection && line.startsWith('###')) inSection = false;
     if (!inSection) continue;
@@ -35,8 +38,10 @@ export function parseSchedules(content: string, sectionName = 'Schedules'): Sche
     if (!match) continue;
 
     const [, sh, sm, eh, em, title] = match;
-    const startH = parseInt(sh), startM = parseInt(sm);
-    const endH = parseInt(eh), endM = parseInt(em);
+    const start = parseClockTime(`${sh}:${sm}`), end = parseClockTime(`${eh}:${em}`);
+    if (!start || !end) continue;
+    const [startH, startM] = start, [endH, endM] = end;
+    if (endH * 60 + endM <= startH * 60 + startM) continue;
     const trimTitle = title.trim();
     const tagMatch = trimTitle.match(/#([A-Za-z]\w*)/);
 
@@ -49,6 +54,7 @@ export function parseSchedules(content: string, sectionName = 'Schedules'): Sche
       startMinutes: startH * 60 + startM,
       endMinutes: endH * 60 + endM,
       raw: line,
+      sourceLine,
     });
   }
 
@@ -57,26 +63,47 @@ export function parseSchedules(content: string, sectionName = 'Schedules'): Sche
 
 export function updateEventInContent(content: string, oldRaw: string, event: ScheduleEvent): string {
   const newLine = formatEventLine(event);
-  return content.replace(oldRaw, newLine);
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.split(/\r?\n/);
+  const index = resolveSourceLine(lines, oldRaw, event.sourceLine);
+  if (index === -1) return content;
+  lines[index] = newLine;
+  return lines.join(eol);
 }
 
-export function deleteEventFromContent(content: string, raw: string): string {
-  const lines = content.split('\n');
-  const filtered = lines.filter(l => l.trimEnd() !== raw.trimEnd());
-  return filtered.join('\n');
+export function deleteEventFromContent(content: string, raw: string, sourceLine?: number): string {
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.split(/\r?\n/);
+  const index = resolveSourceLine(lines, raw, sourceLine);
+  if (index === -1) return content;
+  lines.splice(index, 1);
+  return lines.join(eol);
+}
+
+function resolveSourceLine(lines: string[], raw: string, sourceLine?: number): number {
+  if (sourceLine !== undefined && lines[sourceLine]?.trimEnd() === raw.trimEnd()) {
+    return sourceLine;
+  }
+  const matches = lines
+    .map((line, index) => line.trimEnd() === raw.trimEnd() ? index : -1)
+    .filter((index) => index >= 0);
+  // 위치 정보가 오래됐더라도 후보가 하나뿐일 때만 안전하게 복구한다.
+  return matches.length === 1 ? matches[0] : -1;
 }
 
 export function insertEventIntoContent(
   content: string,
   event: ScheduleEvent,
-  sectionName = 'Schedules',
+  sectionName = 'Schedule',
 ): string {
   const newLine = formatEventLine(event);
-  const lines = content.split('\n');
+  const eol = content.includes('\r\n') ? '\r\n' : '\n';
+  const lines = content.split(/\r?\n/);
   const sectionIdx = lines.findIndex(l => l.trim() === `### ${sectionName}`);
 
   if (sectionIdx === -1) {
-    return content + `\n### ${sectionName}\n${newLine}\n`;
+    const separator = content.length === 0 || content.endsWith(eol) ? '' : eol;
+    return content + `${separator}### ${sectionName}${eol}${newLine}${eol}`;
   }
 
   const scheduleLines: { idx: number; startMinutes: number }[] = [];
@@ -99,7 +126,7 @@ export function insertEventIntoContent(
   }
 
   lines.splice(insertIdx, 0, newLine);
-  return lines.join('\n');
+  return lines.join(eol);
 }
 
 export function formatEventLine(event: ScheduleEvent): string {
@@ -108,4 +135,12 @@ export function formatEventLine(event: ScheduleEvent): string {
 
 export function pad(n: number): string {
   return String(n).padStart(2, '0');
+}
+
+export function parseClockTime(value: string): [number, number] | null {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[1]), minute = Number(match[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return [hour, minute];
 }

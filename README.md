@@ -15,8 +15,9 @@ A visual interactive calendar for [Obsidian](https://obsidian.md) — turn your 
 - **Click to edit** — click any event to open a popup and edit title or time
 - **Delete** — remove an event directly from the edit popup
 - **Double-click to add** — double-click any empty time slot to create a new event; a ghost preview shows the time range before you confirm
+- **Mobile-friendly add** — use the `+ 일정 추가` button on touch devices; missing daily notes can be created in one click
 - **Undo** — press `Cmd/Ctrl+Z` to revert the last change (up to 20 steps)
-- **Auto-sync** — all changes are instantly written back to your note file
+- **Safe auto-sync** — atomic note updates preserve concurrent edits; undo stops if the note changed elsewhere
 
 ### Drag tooltip
 A floating `HH:MM – HH:MM` label follows your cursor during any drag or resize so you always know exactly where an event will land.
@@ -70,12 +71,9 @@ The section name (`Schedule`) is configurable in settings. Adding `#tag` is opti
 
 ## Installation
 
-### From Community Plugins (recommended)
+### From Community Plugins
 
-1. Open **Settings → Community plugins**
-2. Disable **Restricted mode** if enabled
-3. Click **Browse** and search for `Schedule Calendar`
-4. Click **Install**, then **Enable**
+The plugin is being prepared for the Obsidian Community directory. Until it is approved, install it with BRAT or manually from GitHub Releases.
 
 ### Manual Installation
 
@@ -88,6 +86,8 @@ The section name (`Schedule`) is configurable in settings. Adding `#tag` is opti
 
 1. Install the [BRAT plugin](https://github.com/TfTHacker/obsidian42-brat)
 2. Add `seonggoos/obsidian-schedule-calendar` as a beta plugin
+
+This is currently the recommended installation method for automatic updates.
 
 ## Usage
 

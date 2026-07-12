@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.2.0] - 2026-07-13
+
+### Added
+- Mobile-friendly **Add event** button with the next 15-minute slot preselected
+- One-click daily note creation when the selected date has no note
+- Strict time validation with clear feedback for invalid or reversed ranges
+- Parser and write-back regression tests, including duplicate events and CRLF notes
+
+### Changed
+- All note edits now use Obsidian's atomic `Vault.process()` API
+- Undo restores a change only when the note has not been modified elsewhere
+- Time fields use native time inputs with 15-minute steps
+- The default schedule heading is consistently `### Schedule`
+
+### Fixed
+- Editing or deleting one of two identical events no longer affects both entries
+- External note edits are no longer overwritten by a stale undo snapshot
+- Popup outside-click listeners are cleaned up immediately
+- Empty daily note folder settings correctly target the vault root
+- Existing CRLF line endings are preserved during write-back
+
+---
+
 ## [1.1.0] - 2026-05-19
 
 ### Added

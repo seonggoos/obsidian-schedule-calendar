@@ -1,7 +1,7 @@
 # AGENTS.md — obsidian-schedule-calendar
 
 Obsidian 플러그인 — 데일리 노트의 `### Schedule` 항목을 드래그 가능한 타임라인 캘린더로 렌더.
-(폴더명은 `obsidian-note-calendar`, 플러그인·레포명은 `obsidian-schedule-calendar`.)
+(폴더·플러그인·레포명은 `obsidian-schedule-calendar`.)
 사람용 기능·설치·설정은 `README.md` 참조.
 
 ## 핵심

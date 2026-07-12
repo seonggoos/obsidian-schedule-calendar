@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, TFile, moment, normalizePath } from 'obsidian';
+import { ItemView, WorkspaceLeaf, TFile, moment, normalizePath, Notice } from 'obsidian';
 import {
   parseSchedules,
   updateEventInContent,
@@ -7,6 +7,7 @@ import {
   colorForTag,
   ScheduleEvent,
   pad,
+  parseClockTime,
 } from './parser';
 import type TimelinePlugin from './main';
 
@@ -26,8 +27,9 @@ export class TimelineView extends ItemView {
   private nowInterval: number | null = null;
   private activePopup: HTMLElement | null = null;
   private zoomLevel = 1;
-  private undoStack: Array<{ file: TFile; content: string }> = [];
+  private undoStack: Array<{ file: TFile; before: string; after: string }> = [];
   private dragTooltipEl: HTMLElement | null = null;
+  private popupOutsideHandler: ((e: PointerEvent) => void) | null = null;
 
   private get pxPerMin() { return BASE_PX_PER_MIN * this.zoomLevel; }
 
@@ -136,6 +138,7 @@ export class TimelineView extends ItemView {
   // ─── Daily View ────────────────────────────────────────────────────────────
 
   private async renderDailyView(root: HTMLElement) {
+    this.currentFile = null;
     const dateStr = this.focusDate.format('YYYY-MM-DD');
     const filePath = normalizePath(`${this.plugin.settings.dailyNotePath}${dateStr}.md`);
     const file = this.app.vault.getAbstractFileByPath(filePath);
@@ -143,6 +146,15 @@ export class TimelineView extends ItemView {
 
     if (!file || !(file instanceof TFile)) {
       wrap.createEl('div', { cls: 'dtl-empty', text: `데일리 노트 없음\n${filePath}` });
+      const createBtn = wrap.createEl('button', { cls: 'dtl-today-btn', text: '데일리 노트 만들기' });
+      createBtn.addEventListener('click', async () => {
+        const folder = normalizePath(this.plugin.settings.dailyNotePath).replace(/\/$/, '');
+        if (folder && !(await this.app.vault.adapter.exists(folder))) {
+          await this.app.vault.createFolder(folder);
+        }
+        await this.app.vault.create(filePath, `### ${this.plugin.settings.scheduleSection}\n`);
+        await this.render();
+      });
       return;
     }
 
@@ -153,6 +165,16 @@ export class TimelineView extends ItemView {
     const grid = this.createGrid(wrap);
     this.eventsEl = grid.createEl('div', { cls: 'dtl-events' });
     this.renderDailyEvents(this.eventsEl, events, file);
+
+    const addBtn = root.createEl('button', { cls: 'dtl-today-btn', text: '+ 일정 추가' });
+    root.insertBefore(addBtn, wrap);
+    addBtn.addEventListener('click', (e: MouseEvent) => {
+      const now = moment();
+      const start = Math.min(1440 - this.plugin.settings.defaultDuration,
+        Math.ceil((now.hours() * 60 + now.minutes()) / SNAP_MIN) * SNAP_MIN);
+      this.openAddPopup(e.clientX || window.innerWidth / 2, e.clientY || 80,
+        start, start + this.plugin.settings.defaultDuration, file);
+    });
 
     this.setupHoverPreview(grid);
 
@@ -322,6 +344,10 @@ export class TimelineView extends ItemView {
   // ─── Popup ─────────────────────────────────────────────────────────────────
 
   private closePopup() {
+    if (this.popupOutsideHandler) {
+      document.removeEventListener('pointerdown', this.popupOutsideHandler);
+      this.popupOutsideHandler = null;
+    }
     this.activePopup?.remove();
     this.activePopup = null;
   }
@@ -338,12 +364,12 @@ export class TimelineView extends ItemView {
     const timeRow = popup.createEl('div', { cls: 'dtl-popup-time-row' });
     const startInput = timeRow.createEl('input', {
       cls: 'dtl-popup-input dtl-popup-time',
-      attr: { type: 'text', value: `${pad(event.startHour)}:${pad(event.startMin)}` },
+      attr: { type: 'time', value: `${pad(event.startHour)}:${pad(event.startMin)}`, step: '900' },
     }) as HTMLInputElement;
     timeRow.createEl('span', { cls: 'dtl-popup-time-sep', text: '–' });
     const endInput = timeRow.createEl('input', {
       cls: 'dtl-popup-input dtl-popup-time',
-      attr: { type: 'text', value: `${pad(event.endHour)}:${pad(event.endMin)}` },
+      attr: { type: 'time', value: `${pad(event.endHour)}:${pad(event.endMin)}`, step: '900' },
     }) as HTMLInputElement;
 
     const btnRow = popup.createEl('div', { cls: 'dtl-popup-btn-row' });
@@ -366,24 +392,26 @@ export class TimelineView extends ItemView {
     const doSave = async () => {
       const title = titleInput.value.trim();
       if (!title) return;
-      const [sh, sm] = this.parseTime(startInput.value);
-      const [eh, em] = this.parseTime(endInput.value);
+      const start = parseClockTime(startInput.value), end = parseClockTime(endInput.value);
+      if (!start || !end) return new Notice('시간을 HH:mm 형식으로 입력해주세요.');
+      const [sh, sm] = start, [eh, em] = end;
+      if (eh * 60 + em <= sh * 60 + sm) return new Notice('종료 시간은 시작 시간보다 늦어야 해요.');
       const updated: ScheduleEvent = {
         ...event, title,
         startHour: sh, startMin: sm, endHour: eh, endMin: em,
         startMinutes: sh * 60 + sm, endMinutes: eh * 60 + em,
       };
-      await this.pushUndo(file);
-      const content = await this.app.vault.read(file);
-      await this.app.vault.modify(file, updateEventInContent(content, event.raw, updated));
+      const changed = await this.applyFileEdit(file, (content) =>
+        updateEventInContent(content, event.raw, updated));
+      if (!changed) return new Notice('일정이 외부에서 변경됐어요. 새로고침 후 다시 시도해주세요.');
       this.closePopup();
       if (this.mode === 'daily') await this.refreshDailyEvents(); else await this.render();
     };
 
     const doDelete = async () => {
-      await this.pushUndo(file);
-      const content = await this.app.vault.read(file);
-      await this.app.vault.modify(file, deleteEventFromContent(content, event.raw));
+      const changed = await this.applyFileEdit(file, (content) =>
+        deleteEventFromContent(content, event.raw, event.sourceLine));
+      if (!changed) return new Notice('일정이 외부에서 변경됐어요. 새로고침 후 다시 시도해주세요.');
       this.closePopup();
       if (this.mode === 'daily') await this.refreshDailyEvents(); else await this.render();
     };
@@ -410,12 +438,12 @@ export class TimelineView extends ItemView {
     const timeRow = popup.createEl('div', { cls: 'dtl-popup-time-row' });
     const startInput = timeRow.createEl('input', {
       cls: 'dtl-popup-input dtl-popup-time',
-      attr: { type: 'text', value: `${pad(Math.floor(startMin / 60))}:${pad(startMin % 60)}` },
+      attr: { type: 'time', value: `${pad(Math.floor(startMin / 60))}:${pad(startMin % 60)}`, step: '900' },
     }) as HTMLInputElement;
     timeRow.createEl('span', { cls: 'dtl-popup-time-sep', text: '–' });
     const endInput = timeRow.createEl('input', {
       cls: 'dtl-popup-input dtl-popup-time',
-      attr: { type: 'text', value: `${pad(Math.floor(endMin / 60))}:${pad(endMin % 60)}` },
+      attr: { type: 'time', value: `${pad(Math.floor(endMin / 60))}:${pad(endMin % 60)}`, step: '900' },
     }) as HTMLInputElement;
 
     const btnRow = popup.createEl('div', { cls: 'dtl-popup-btn-row' });
@@ -426,16 +454,17 @@ export class TimelineView extends ItemView {
     const doAdd = async () => {
       const title = titleInput.value.trim();
       if (!title) return;
-      const [sh, sm] = this.parseTime(startInput.value);
-      const [eh, em] = this.parseTime(endInput.value);
+      const start = parseClockTime(startInput.value), end = parseClockTime(endInput.value);
+      if (!start || !end) return new Notice('시간을 HH:mm 형식으로 입력해주세요.');
+      const [sh, sm] = start, [eh, em] = end;
+      if (eh * 60 + em <= sh * 60 + sm) return new Notice('종료 시간은 시작 시간보다 늦어야 해요.');
       const newEvent: ScheduleEvent = {
         id: `new_${Date.now()}`, title,
         startHour: sh, startMin: sm, endHour: eh, endMin: em,
         startMinutes: sh * 60 + sm, endMinutes: eh * 60 + em, raw: '',
       };
-      await this.pushUndo(file);
-      const content = await this.app.vault.read(file);
-      await this.app.vault.modify(file, insertEventIntoContent(content, newEvent, this.plugin.settings.scheduleSection));
+      await this.applyFileEdit(file, (content) =>
+        insertEventIntoContent(content, newEvent, this.plugin.settings.scheduleSection));
       this.closePopup();
       if (this.mode === 'daily') await this.refreshDailyEvents(); else await this.render();
     };
@@ -453,7 +482,7 @@ export class TimelineView extends ItemView {
     const popup = document.body.createEl('div', { cls: 'dtl-popup' });
     this.activePopup = popup;
 
-    popup.addEventListener('mousedown', (e) => e.stopPropagation());
+    popup.addEventListener('pointerdown', (e) => e.stopPropagation());
 
     requestAnimationFrame(() => {
       const w = popup.offsetWidth || 280, h = popup.offsetHeight || 180;
@@ -464,23 +493,15 @@ export class TimelineView extends ItemView {
       popup.style.top = `${Math.max(8, top)}px`;
     });
 
-    const outsideHandler = (e: MouseEvent) => {
+    const outsideHandler = (e: PointerEvent) => {
       if (!popup.contains(e.target as Node)) {
         this.closePopup();
-        document.removeEventListener('mousedown', outsideHandler);
       }
     };
-    setTimeout(() => document.addEventListener('mousedown', outsideHandler), 0);
+    this.popupOutsideHandler = outsideHandler;
+    setTimeout(() => document.addEventListener('pointerdown', outsideHandler), 0);
 
     return popup;
-  }
-
-  private parseTime(val: string): [number, number] {
-    const [h = '0', m = '0'] = val.split(':');
-    return [
-      Math.max(0, Math.min(23, parseInt(h) || 0)),
-      Math.max(0, Math.min(59, parseInt(m) || 0)),
-    ];
   }
 
   // ─── Stats ─────────────────────────────────────────────────────────────────
@@ -564,17 +585,34 @@ export class TimelineView extends ItemView {
 
   // ─── Undo ────────────────────────────────────────────────────────────────────
 
-  private async pushUndo(file: TFile) {
-    const content = await this.app.vault.read(file);
-    this.undoStack.push({ file, content });
-    if (this.undoStack.length > 20) this.undoStack.shift();
-  }
-
   private async undo() {
     const last = this.undoStack.pop();
     if (!last) return;
-    await this.app.vault.modify(last.file, last.content);
+    let restored = false;
+    await this.app.vault.process(last.file, (current) => {
+      if (current !== last.after) return current;
+      restored = true;
+      return last.before;
+    });
+    if (!restored) {
+      this.undoStack.push(last);
+      new Notice('노트가 다른 곳에서 변경되어 실행 취소하지 않았어요.');
+      return;
+    }
     if (this.mode !== 'daily') await this.render();
+  }
+
+  private async applyFileEdit(file: TFile, transform: (content: string) => string): Promise<boolean> {
+    let before = '', after = '';
+    await this.app.vault.process(file, (current) => {
+      before = current;
+      after = transform(current);
+      return after;
+    });
+    if (before === after) return false;
+    this.undoStack.push({ file, before, after });
+    if (this.undoStack.length > 20) this.undoStack.shift();
+    return true;
   }
 
   // ─── Drag tooltip ────────────────────────────────────────────────────────────
@@ -783,15 +821,15 @@ export class TimelineView extends ItemView {
   // ─── Data ───────────────────────────────────────────────────────────────────
 
   private async saveEvent(file: TFile, event: ScheduleEvent, newStartMin: number, newEndMin: number) {
-    await this.pushUndo(file);
     const updated: ScheduleEvent = {
       ...event,
       startMinutes: newStartMin, endMinutes: newEndMin,
       startHour: Math.floor(newStartMin / 60), startMin: newStartMin % 60,
       endHour: Math.floor(newEndMin / 60), endMin: newEndMin % 60,
     };
-    const content = await this.app.vault.read(file);
-    await this.app.vault.modify(file, updateEventInContent(content, event.raw, updated));
+    const changed = await this.applyFileEdit(file, (content) =>
+      updateEventInContent(content, event.raw, updated));
+    if (!changed) new Notice('일정이 외부에서 변경됐어요. 새로고침 후 다시 시도해주세요.');
   }
 
   private tickNowLines() {

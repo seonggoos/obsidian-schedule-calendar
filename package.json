@@ -1,11 +1,15 @@
 {
   "name": "obsidian-schedule-calendar",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Visual drag-and-drop calendar for daily and weekly schedule notes",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
-    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production"
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "node --test",
+    "typecheck": "tsc -noEmit -skipLibCheck",
+    "check": "npm run typecheck && npm test",
+    "release:check": "npm run check && npm run build && node scripts/check-release.mjs"
   },
   "devDependencies": {
     "@types/node": "^16.11.6",

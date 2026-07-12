@@ -63,7 +63,7 @@ export class TimelineSettingTab extends PluginSettingTab {
           .onChange(async (value) => {
             let path = value.trim();
             if (path && !path.endsWith('/')) path += '/';
-            this.plugin.settings.dailyNotePath = normalizePath(path) + '/';
+            this.plugin.settings.dailyNotePath = path ? normalizePath(path) + '/' : '';
             await this.plugin.saveSettings();
           })
       );
