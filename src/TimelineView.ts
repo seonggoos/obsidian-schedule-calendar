@@ -10,6 +10,7 @@ import {
   parseClockTime,
 } from './parser';
 import type TimelinePlugin from './main';
+import { locale, t } from './i18n';
 
 export const TIMELINE_VIEW_TYPE = 'schedule-calendar';
 const BASE_PX_PER_MIN = 1.2;
@@ -38,7 +39,7 @@ export class TimelineView extends ItemView {
   }
 
   getViewType() { return TIMELINE_VIEW_TYPE; }
-  getDisplayText() { return 'Schedule Calendar'; }
+  getDisplayText() { return t('pluginName'); }
   getIcon() { return 'calendar-days'; }
 
   async onOpen() {
@@ -92,7 +93,7 @@ export class TimelineView extends ItemView {
     nav.createEl('span', { cls: 'dtl-date', text: this.getDateLabel() });
     nav.createEl('button', { cls: 'dtl-nav-btn', text: '›' })
       .addEventListener('click', () => { this.shiftDate(1); this.render(); });
-    nav.createEl('button', { cls: 'dtl-today-btn', text: '오늘' })
+    nav.createEl('button', { cls: 'dtl-today-btn', text: t('today') })
       .addEventListener('click', () => { this.focusDate = moment(); this.render(); });
 
     if (this.mode !== 'monthly') {
@@ -112,7 +113,7 @@ export class TimelineView extends ItemView {
     }
 
     const toggle = header.createEl('div', { cls: 'dtl-mode-toggle' });
-    for (const [m, label] of [['daily', '일'], ['weekly', '주'], ['monthly', '월']] as [ViewMode, string][]) {
+    for (const [m, label] of [['daily', t('day')], ['weekly', t('week')], ['monthly', t('month')]] as [ViewMode, string][]) {
       toggle.createEl('button', {
         cls: 'dtl-mode-btn' + (this.mode === m ? ' active' : ''),
         text: label,
@@ -132,7 +133,7 @@ export class TimelineView extends ItemView {
       const s = this.focusDate.clone().startOf('isoWeek');
       return `${s.format('MM/DD')} – ${s.clone().add(6, 'days').format('MM/DD')}`;
     }
-    return this.focusDate.format('YYYY년 MM월');
+    return locale() === 'ko' ? this.focusDate.format('YYYY년 MM월') : this.focusDate.format('MMMM YYYY');
   }
 
   // ─── Daily View ────────────────────────────────────────────────────────────
@@ -145,8 +146,8 @@ export class TimelineView extends ItemView {
     const wrap = root.createEl('div', { cls: 'dtl-wrap' });
 
     if (!file || !(file instanceof TFile)) {
-      wrap.createEl('div', { cls: 'dtl-empty', text: `데일리 노트 없음\n${filePath}` });
-      const createBtn = wrap.createEl('button', { cls: 'dtl-today-btn', text: '데일리 노트 만들기' });
+      wrap.createEl('div', { cls: 'dtl-empty', text: `${t('noDailyNote')}\n${filePath}` });
+      const createBtn = wrap.createEl('button', { cls: 'dtl-today-btn', text: t('createDailyNote') });
       createBtn.addEventListener('click', async () => {
         const folder = normalizePath(this.plugin.settings.dailyNotePath).replace(/\/$/, '');
         if (folder && !(await this.app.vault.adapter.exists(folder))) {
@@ -166,7 +167,7 @@ export class TimelineView extends ItemView {
     this.eventsEl = grid.createEl('div', { cls: 'dtl-events' });
     this.renderDailyEvents(this.eventsEl, events, file);
 
-    const addBtn = root.createEl('button', { cls: 'dtl-today-btn', text: '+ 일정 추가' });
+    const addBtn = root.createEl('button', { cls: 'dtl-today-btn', text: t('addEvent') });
     root.insertBefore(addBtn, wrap);
     addBtn.addEventListener('click', (e: MouseEvent) => {
       const now = moment();
@@ -299,7 +300,8 @@ export class TimelineView extends ItemView {
     const wrap = root.createEl('div', { cls: 'dtl-month-wrap' });
 
     const dayNames = wrap.createEl('div', { cls: 'dtl-month-day-names' });
-    for (const d of ['월', '화', '수', '목', '금', '토', '일'])
+    const weekdayLabels = locale() === 'ko' ? ['월', '화', '수', '목', '금', '토', '일'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    for (const d of weekdayLabels)
       dayNames.createEl('div', { cls: 'dtl-month-day-name', text: d });
 
     const grid = wrap.createEl('div', { cls: 'dtl-month-grid' });
@@ -358,7 +360,7 @@ export class TimelineView extends ItemView {
 
     const titleInput = popup.createEl('input', {
       cls: 'dtl-popup-input dtl-popup-title',
-      attr: { type: 'text', value: event.title, placeholder: 'Title' },
+      attr: { type: 'text', value: event.title, placeholder: t('title') },
     }) as HTMLInputElement;
 
     const timeRow = popup.createEl('div', { cls: 'dtl-popup-time-row' });
@@ -373,16 +375,16 @@ export class TimelineView extends ItemView {
     }) as HTMLInputElement;
 
     const btnRow = popup.createEl('div', { cls: 'dtl-popup-btn-row' });
-    const saveBtn = btnRow.createEl('button', { cls: 'dtl-popup-btn dtl-popup-btn--primary', text: 'Save' });
-    const deleteBtn = btnRow.createEl('button', { cls: 'dtl-popup-btn dtl-popup-btn--danger', text: 'Delete' });
-    btnRow.createEl('button', { cls: 'dtl-popup-btn', text: 'Cancel' })
+    const saveBtn = btnRow.createEl('button', { cls: 'dtl-popup-btn dtl-popup-btn--primary', text: t('save') });
+    const deleteBtn = btnRow.createEl('button', { cls: 'dtl-popup-btn dtl-popup-btn--danger', text: t('delete') });
+    btnRow.createEl('button', { cls: 'dtl-popup-btn', text: t('cancel') })
       .addEventListener('click', () => this.closePopup());
 
     // Show open-note button when title contains [[wiki link]]
     const wikiMatch = event.title.match(/\[\[([^\]|]+)/);
     if (wikiMatch) {
       const openBtn = btnRow.createEl('button', { cls: 'dtl-popup-btn dtl-popup-btn--link', text: '↗' });
-      openBtn.setAttribute('aria-label', `Open ${wikiMatch[1]}`);
+      openBtn.setAttribute('aria-label', t('openNote', { name: wikiMatch[1] }));
       openBtn.addEventListener('click', () => {
         this.app.workspace.openLinkText(wikiMatch[1], file.path, false);
         this.closePopup();
@@ -393,9 +395,9 @@ export class TimelineView extends ItemView {
       const title = titleInput.value.trim();
       if (!title) return;
       const start = parseClockTime(startInput.value), end = parseClockTime(endInput.value);
-      if (!start || !end) return new Notice('시간을 HH:mm 형식으로 입력해주세요.');
+      if (!start || !end) return new Notice(t('invalidTime'));
       const [sh, sm] = start, [eh, em] = end;
-      if (eh * 60 + em <= sh * 60 + sm) return new Notice('종료 시간은 시작 시간보다 늦어야 해요.');
+      if (eh * 60 + em <= sh * 60 + sm) return new Notice(t('reversedTime'));
       const updated: ScheduleEvent = {
         ...event, title,
         startHour: sh, startMin: sm, endHour: eh, endMin: em,
@@ -403,7 +405,7 @@ export class TimelineView extends ItemView {
       };
       const changed = await this.applyFileEdit(file, (content) =>
         updateEventInContent(content, event.raw, updated));
-      if (!changed) return new Notice('일정이 외부에서 변경됐어요. 새로고침 후 다시 시도해주세요.');
+      if (!changed) return new Notice(t('staleEvent'));
       this.closePopup();
       if (this.mode === 'daily') await this.refreshDailyEvents(); else await this.render();
     };
@@ -411,7 +413,7 @@ export class TimelineView extends ItemView {
     const doDelete = async () => {
       const changed = await this.applyFileEdit(file, (content) =>
         deleteEventFromContent(content, event.raw, event.sourceLine));
-      if (!changed) return new Notice('일정이 외부에서 변경됐어요. 새로고침 후 다시 시도해주세요.');
+      if (!changed) return new Notice(t('staleEvent'));
       this.closePopup();
       if (this.mode === 'daily') await this.refreshDailyEvents(); else await this.render();
     };
@@ -432,7 +434,7 @@ export class TimelineView extends ItemView {
 
     const titleInput = popup.createEl('input', {
       cls: 'dtl-popup-input dtl-popup-title',
-      attr: { type: 'text', placeholder: 'New event title' },
+      attr: { type: 'text', placeholder: t('newEventTitle') },
     }) as HTMLInputElement;
 
     const timeRow = popup.createEl('div', { cls: 'dtl-popup-time-row' });
@@ -447,17 +449,17 @@ export class TimelineView extends ItemView {
     }) as HTMLInputElement;
 
     const btnRow = popup.createEl('div', { cls: 'dtl-popup-btn-row' });
-    const addBtn = btnRow.createEl('button', { cls: 'dtl-popup-btn dtl-popup-btn--primary', text: 'Add' });
-    btnRow.createEl('button', { cls: 'dtl-popup-btn', text: 'Cancel' })
+    const addBtn = btnRow.createEl('button', { cls: 'dtl-popup-btn dtl-popup-btn--primary', text: t('add') });
+    btnRow.createEl('button', { cls: 'dtl-popup-btn', text: t('cancel') })
       .addEventListener('click', () => this.closePopup());
 
     const doAdd = async () => {
       const title = titleInput.value.trim();
       if (!title) return;
       const start = parseClockTime(startInput.value), end = parseClockTime(endInput.value);
-      if (!start || !end) return new Notice('시간을 HH:mm 형식으로 입력해주세요.');
+      if (!start || !end) return new Notice(t('invalidTime'));
       const [sh, sm] = start, [eh, em] = end;
-      if (eh * 60 + em <= sh * 60 + sm) return new Notice('종료 시간은 시작 시간보다 늦어야 해요.');
+      if (eh * 60 + em <= sh * 60 + sm) return new Notice(t('reversedTime'));
       const newEvent: ScheduleEvent = {
         id: `new_${Date.now()}`, title,
         startHour: sh, startMin: sm, endHour: eh, endMin: em,
@@ -512,8 +514,9 @@ export class TimelineView extends ItemView {
     const h = Math.floor(totalMin / 60), m = totalMin % 60;
 
     const infoEl = statsEl.createEl('div', { cls: 'dtl-stats-info' });
-    infoEl.createEl('span', { cls: 'dtl-stats-count', text: `${events.length}개` });
-    infoEl.createEl('span', { cls: 'dtl-stats-total', text: `총 ${h}h${m > 0 ? ` ${m}m` : ''}` });
+    infoEl.createEl('span', { cls: 'dtl-stats-count', text: t('eventCount', { count: events.length }) });
+    const duration = `${h}h${m > 0 ? ` ${m}m` : ''}`;
+    infoEl.createEl('span', { cls: 'dtl-stats-total', text: t('totalTime', { time: duration }) });
 
     const tagMap = new Map<string, number>();
     for (const ev of events) {
@@ -596,7 +599,7 @@ export class TimelineView extends ItemView {
     });
     if (!restored) {
       this.undoStack.push(last);
-      new Notice('노트가 다른 곳에서 변경되어 실행 취소하지 않았어요.');
+      new Notice(t('undoConflict'));
       return;
     }
     if (this.mode !== 'daily') await this.render();
@@ -829,7 +832,7 @@ export class TimelineView extends ItemView {
     };
     const changed = await this.applyFileEdit(file, (content) =>
       updateEventInContent(content, event.raw, updated));
-    if (!changed) new Notice('일정이 외부에서 변경됐어요. 새로고침 후 다시 시도해주세요.');
+    if (!changed) new Notice(t('staleEvent'));
   }
 
   private tickNowLines() {

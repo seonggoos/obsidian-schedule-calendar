@@ -44,6 +44,7 @@ If an event title contains a `[[wiki link]]`, the edit popup shows an `↗` butt
 ### Other
 - **Now line** — red indicator showing the current time
 - **Configurable** — section name, note folder, and default event duration are all customizable
+- **Localized UI** — automatically follows Obsidian in Korean or English; other languages fall back to English
 
 ## Screenshots
 

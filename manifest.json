@@ -1,7 +1,7 @@
 {
   "id": "schedule-calendar",
   "name": "Schedule Calendar",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "minAppVersion": "1.0.0",
   "description": "Visual drag-and-drop calendar for daily and weekly schedule notes.",
   "author": "seonggoos",

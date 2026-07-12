@@ -1,5 +1,6 @@
 import { App, PluginSettingTab, Setting, normalizePath } from 'obsidian';
 import type TimelinePlugin from './main';
+import { t } from './i18n';
 
 export interface TimelineSettings {
   scheduleSection: string;
@@ -21,11 +22,11 @@ export class TimelineSettingTab extends PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
-    new Setting(containerEl).setName('Schedule Calendar').setHeading();
+    new Setting(containerEl).setName(t('settings')).setHeading();
 
     new Setting(containerEl)
-      .setName('Schedule section')
-      .setDesc('데일리 노트에서 스케줄을 파싱할 섹션 이름 (예: Schedule)')
+      .setName(t('scheduleSection'))
+      .setDesc(t('scheduleSectionDesc'))
       .addText((text) =>
         text
           .setPlaceholder('Schedule')
@@ -37,15 +38,15 @@ export class TimelineSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('기본 일정 시간')
-      .setDesc('더블클릭으로 새 일정 추가 시 기본 시간 단위')
+      .setName(t('defaultDuration'))
+      .setDesc(t('defaultDurationDesc'))
       .addDropdown((drop) =>
         drop
-          .addOption('15', '15분')
-          .addOption('30', '30분')
-          .addOption('60', '60분')
-          .addOption('90', '90분')
-          .addOption('120', '2시간')
+          .addOption('15', t('minutes', { count: 15 }))
+          .addOption('30', t('minutes', { count: 30 }))
+          .addOption('60', t('minutes', { count: 60 }))
+          .addOption('90', t('minutes', { count: 90 }))
+          .addOption('120', t('hours', { count: 2 }))
           .setValue(String(this.plugin.settings.defaultDuration))
           .onChange(async (value) => {
             this.plugin.settings.defaultDuration = parseInt(value);
@@ -54,8 +55,8 @@ export class TimelineSettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Daily note folder')
-      .setDesc('데일리 노트가 저장된 폴더 경로')
+      .setName(t('dailyNoteFolder'))
+      .setDesc(t('dailyNoteFolderDesc'))
       .addText((text) =>
         text
           .setPlaceholder('30.Calendar/31.Daily/')

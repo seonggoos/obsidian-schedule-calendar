@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.1] - 2026-07-13
+
+### Added
+- Full Korean and English UI localization based on the current Obsidian language
+- English fallback for every other Obsidian language
+- Locale-aware navigation, settings, notices, statistics, dates, and accessibility labels
+
+---
+
 ## [1.2.0] - 2026-07-13
 
 ### Added

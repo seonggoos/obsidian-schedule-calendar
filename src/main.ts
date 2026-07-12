@@ -1,20 +1,22 @@
-import { Plugin } from 'obsidian';
+import { Plugin, getLanguage } from 'obsidian';
 import { TimelineView, TIMELINE_VIEW_TYPE } from './TimelineView';
 import { TimelineSettings, DEFAULT_SETTINGS, TimelineSettingTab } from './settings';
+import { configureLocale, t } from './i18n';
 
 export default class TimelinePlugin extends Plugin {
   settings: TimelineSettings = DEFAULT_SETTINGS;
 
   async onload() {
+    configureLocale(getLanguage());
     await this.loadSettings();
 
     this.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this));
 
-    this.addRibbonIcon('calendar-days', 'Schedule Calendar', () => this.activateView());
+    this.addRibbonIcon('calendar-days', t('pluginName'), () => this.activateView());
 
     this.addCommand({
       id: 'open-schedule-calendar',
-      name: 'Open Schedule Calendar',
+      name: t('openCommand'),
       callback: () => this.activateView(),
     });
 
