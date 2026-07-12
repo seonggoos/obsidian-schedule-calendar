@@ -59,7 +59,7 @@ export class TimelineSettingTab extends PluginSettingTab {
       .setDesc(t('dailyNoteFolderDesc'))
       .addText((text) =>
         text
-          .setPlaceholder('30.Calendar/31.Daily/')
+          .setPlaceholder(DEFAULT_SETTINGS.dailyNotePath)
           .setValue(this.plugin.settings.dailyNotePath)
           .onChange(async (value) => {
             let path = value.trim();

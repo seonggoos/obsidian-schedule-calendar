@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.2] - 2026-07-13
+
+### Fixed
+- Updated `minAppVersion` to `1.8.7` to match the Obsidian APIs used by the plugin
+- Added the official `eslint-plugin-obsidianmd` rules and resolved all submission errors and warnings
+- Replaced global document access with `activeDocument` for popout window compatibility
+- Replaced direct visibility styles with CSS classes
+- Made every asynchronous UI callback explicitly handled
+- Shortened the command ID so Obsidian can namespace it automatically
+- Updated TypeScript, esbuild, and Obsidian API type dependencies
+
+---
+
 ## [1.2.1] - 2026-07-13
 
 ### Added

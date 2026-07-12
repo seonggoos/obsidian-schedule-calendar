@@ -46,14 +46,14 @@ export class TimelineView extends ItemView {
     await this.render();
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
-        if (this.mode === 'daily' && file === this.currentFile) this.refreshDailyEvents();
+        if (this.mode === 'daily' && file === this.currentFile) void this.refreshDailyEvents();
       })
     );
-    this.registerDomEvent(document, 'keydown', (e: KeyboardEvent) => {
+    this.registerDomEvent(activeDocument, 'keydown', (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key === 'z') {
         if (this.app.workspace.getActiveViewOfType(TimelineView) === this) {
           e.preventDefault();
-          this.undo();
+          void this.undo();
         }
       }
     });
@@ -85,39 +85,39 @@ export class TimelineView extends ItemView {
   // ─── Header ────────────────────────────────────────────────────────────────
 
   private renderHeader(root: HTMLElement) {
-    const header = root.createEl('div', { cls: 'dtl-header' });
+    const header = root.createDiv({ cls: 'dtl-header' });
 
-    const nav = header.createEl('div', { cls: 'dtl-nav' });
+    const nav = header.createDiv({ cls: 'dtl-nav' });
     nav.createEl('button', { cls: 'dtl-nav-btn', text: '‹' })
-      .addEventListener('click', () => { this.shiftDate(-1); this.render(); });
-    nav.createEl('span', { cls: 'dtl-date', text: this.getDateLabel() });
+      .addEventListener('click', () => { this.shiftDate(-1); void this.render(); });
+    nav.createSpan({ cls: 'dtl-date', text: this.getDateLabel() });
     nav.createEl('button', { cls: 'dtl-nav-btn', text: '›' })
-      .addEventListener('click', () => { this.shiftDate(1); this.render(); });
+      .addEventListener('click', () => { this.shiftDate(1); void this.render(); });
     nav.createEl('button', { cls: 'dtl-today-btn', text: t('today') })
-      .addEventListener('click', () => { this.focusDate = moment(); this.render(); });
+      .addEventListener('click', () => { this.focusDate = moment(); void this.render(); });
 
     if (this.mode !== 'monthly') {
-      const zoomCtrl = header.createEl('div', { cls: 'dtl-zoom-ctrl' });
+      const zoomCtrl = header.createDiv({ cls: 'dtl-zoom-ctrl' });
       const minusBtn = zoomCtrl.createEl('button', { cls: 'dtl-zoom-btn', text: '−' });
-      zoomCtrl.createEl('span', { cls: 'dtl-zoom-label', text: `${this.zoomLevel}×` });
+      zoomCtrl.createSpan({ cls: 'dtl-zoom-label', text: `${this.zoomLevel}×` });
       const plusBtn = zoomCtrl.createEl('button', { cls: 'dtl-zoom-btn', text: '+' });
 
       minusBtn.addEventListener('click', () => {
         const idx = ZOOM_LEVELS.indexOf(this.zoomLevel);
-        if (idx > 0) { this.zoomLevel = ZOOM_LEVELS[idx - 1]; this.render(); }
+        if (idx > 0) { this.zoomLevel = ZOOM_LEVELS[idx - 1]; void this.render(); }
       });
       plusBtn.addEventListener('click', () => {
         const idx = ZOOM_LEVELS.indexOf(this.zoomLevel);
-        if (idx < ZOOM_LEVELS.length - 1) { this.zoomLevel = ZOOM_LEVELS[idx + 1]; this.render(); }
+        if (idx < ZOOM_LEVELS.length - 1) { this.zoomLevel = ZOOM_LEVELS[idx + 1]; void this.render(); }
       });
     }
 
-    const toggle = header.createEl('div', { cls: 'dtl-mode-toggle' });
+    const toggle = header.createDiv({ cls: 'dtl-mode-toggle' });
     for (const [m, label] of [['daily', t('day')], ['weekly', t('week')], ['monthly', t('month')]] as [ViewMode, string][]) {
       toggle.createEl('button', {
         cls: 'dtl-mode-btn' + (this.mode === m ? ' active' : ''),
         text: label,
-      }).addEventListener('click', () => { this.mode = m; this.render(); });
+      }).addEventListener('click', () => { this.mode = m; void this.render(); });
     }
   }
 
@@ -143,19 +143,19 @@ export class TimelineView extends ItemView {
     const dateStr = this.focusDate.format('YYYY-MM-DD');
     const filePath = normalizePath(`${this.plugin.settings.dailyNotePath}${dateStr}.md`);
     const file = this.app.vault.getAbstractFileByPath(filePath);
-    const wrap = root.createEl('div', { cls: 'dtl-wrap' });
+    const wrap = root.createDiv({ cls: 'dtl-wrap' });
 
     if (!file || !(file instanceof TFile)) {
-      wrap.createEl('div', { cls: 'dtl-empty', text: `${t('noDailyNote')}\n${filePath}` });
+      wrap.createDiv({ cls: 'dtl-empty', text: `${t('noDailyNote')}\n${filePath}` });
       const createBtn = wrap.createEl('button', { cls: 'dtl-today-btn', text: t('createDailyNote') });
-      createBtn.addEventListener('click', async () => {
+      createBtn.addEventListener('click', () => { void (async () => {
         const folder = normalizePath(this.plugin.settings.dailyNotePath).replace(/\/$/, '');
         if (folder && !(await this.app.vault.adapter.exists(folder))) {
           await this.app.vault.createFolder(folder);
         }
         await this.app.vault.create(filePath, `### ${this.plugin.settings.scheduleSection}\n`);
         await this.render();
-      });
+      })(); });
       return;
     }
 
@@ -164,7 +164,7 @@ export class TimelineView extends ItemView {
     const events = parseSchedules(content, this.plugin.settings.scheduleSection);
 
     const grid = this.createGrid(wrap);
-    this.eventsEl = grid.createEl('div', { cls: 'dtl-events' });
+    this.eventsEl = grid.createDiv({ cls: 'dtl-events' });
     this.renderDailyEvents(this.eventsEl, events, file);
 
     const addBtn = root.createEl('button', { cls: 'dtl-today-btn', text: t('addEvent') });
@@ -187,12 +187,12 @@ export class TimelineView extends ItemView {
       this.openAddPopup(e.clientX, e.clientY, startMin, startMin + dur, file);
     });
 
-    const nowLine = grid.createEl('div', { cls: 'dtl-now-line' });
+    const nowLine = grid.createDiv({ cls: 'dtl-now-line' });
     this.nowLineEls = [nowLine];
     this.tickNowLines();
     this.nowInterval = window.setInterval(() => this.tickNowLines(), 60000);
 
-    requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
       const now = moment();
       wrap.scrollTop = Math.max(0, (now.hours() * 60 + now.minutes() - 60) * this.pxPerMin);
     });
@@ -222,25 +222,24 @@ export class TimelineView extends ItemView {
     const weekStart = this.focusDate.clone().startOf('isoWeek');
     const days = Array.from({ length: 7 }, (_, i) => weekStart.clone().add(i, 'days'));
 
-    const wrap = root.createEl('div', { cls: 'dtl-wrap dtl-wrap--weekly' });
-    const weekGrid = wrap.createEl('div', { cls: 'dtl-week-grid' });
+    const wrap = root.createDiv({ cls: 'dtl-wrap dtl-wrap--weekly' });
+    const weekGrid = wrap.createDiv({ cls: 'dtl-week-grid' });
 
-    const headerRow = weekGrid.createEl('div', { cls: 'dtl-week-headers' });
-    headerRow.createEl('div', { cls: 'dtl-week-gutter' });
+    const headerRow = weekGrid.createDiv({ cls: 'dtl-week-headers' });
+    headerRow.createDiv({ cls: 'dtl-week-gutter' });
     for (const day of days) {
       const isToday = day.isSame(moment(), 'day');
-      const h = headerRow.createEl('div', { cls: 'dtl-week-day-header' + (isToday ? ' today' : '') });
-      h.createEl('div', { cls: 'dtl-week-day-name', text: day.format('ddd') });
-      h.createEl('div', { cls: 'dtl-week-day-date', text: day.format('M/D') });
-      h.addEventListener('click', () => { this.focusDate = day.clone(); this.mode = 'daily'; this.render(); });
+      const h = headerRow.createDiv({ cls: 'dtl-week-day-header' + (isToday ? ' today' : '') });
+      h.createDiv({ cls: 'dtl-week-day-name', text: day.format('ddd') });
+      h.createDiv({ cls: 'dtl-week-day-date', text: day.format('M/D') });
+      h.addEventListener('click', () => { this.focusDate = day.clone(); this.mode = 'daily'; void this.render(); });
     }
 
-    const colsWrap = weekGrid.createEl('div', { cls: 'dtl-week-cols-wrap' });
+    const colsWrap = weekGrid.createDiv({ cls: 'dtl-week-cols-wrap' });
 
-    const hourCol = colsWrap.createEl('div', { cls: 'dtl-week-hour-col' });
+    const hourCol = colsWrap.createDiv({ cls: 'dtl-week-hour-col' });
     for (let h = 0; h < 24; h++) {
-      hourCol.createEl('div', { cls: 'dtl-hour-row' })
-        .createEl('span', { cls: 'dtl-hour-label', text: h === 0 ? '' : `${pad(h)}:00` });
+      hourCol.createDiv({ cls: 'dtl-hour-row' }).createSpan({ cls: 'dtl-hour-label', text: h === 0 ? '' : `${pad(h)}:00` });
     }
 
     const dayData = await Promise.all(days.map(async (day) => {
@@ -252,10 +251,10 @@ export class TimelineView extends ItemView {
 
     for (const { day, file, events } of dayData) {
       const isToday = day.isSame(moment(), 'day');
-      const col = colsWrap.createEl('div', { cls: 'dtl-week-col' + (isToday ? ' today' : '') });
+      const col = colsWrap.createDiv({ cls: 'dtl-week-col' + (isToday ? ' today' : '') });
 
-      for (let h = 0; h < 24; h++) col.createEl('div', { cls: 'dtl-hour-row' });
-      const eventsEl = col.createEl('div', { cls: 'dtl-events' });
+      for (let h = 0; h < 24; h++) col.createDiv({ cls: 'dtl-hour-row' });
+      const eventsEl = col.createDiv({ cls: 'dtl-events' });
 
       if (file) {
         for (const event of events) {
@@ -276,7 +275,7 @@ export class TimelineView extends ItemView {
       }
 
       if (isToday) {
-        const nowLine = col.createEl('div', { cls: 'dtl-now-line' });
+        const nowLine = col.createDiv({ cls: 'dtl-now-line' });
         this.nowLineEls.push(nowLine);
       }
     }
@@ -284,7 +283,7 @@ export class TimelineView extends ItemView {
     this.tickNowLines();
     this.nowInterval = window.setInterval(() => this.tickNowLines(), 60000);
 
-    requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
       const now = moment();
       colsWrap.scrollTop = Math.max(0, (now.hours() * 60 + now.minutes() - 60) * this.pxPerMin);
     });
@@ -297,14 +296,14 @@ export class TimelineView extends ItemView {
     const gridStart = monthStart.clone().startOf('isoWeek');
     const gridEnd = this.focusDate.clone().endOf('month').endOf('isoWeek');
 
-    const wrap = root.createEl('div', { cls: 'dtl-month-wrap' });
+    const wrap = root.createDiv({ cls: 'dtl-month-wrap' });
 
-    const dayNames = wrap.createEl('div', { cls: 'dtl-month-day-names' });
+    const dayNames = wrap.createDiv({ cls: 'dtl-month-day-names' });
     const weekdayLabels = locale() === 'ko' ? ['월', '화', '수', '목', '금', '토', '일'] : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     for (const d of weekdayLabels)
-      dayNames.createEl('div', { cls: 'dtl-month-day-name', text: d });
+      dayNames.createDiv({ cls: 'dtl-month-day-name', text: d });
 
-    const grid = wrap.createEl('div', { cls: 'dtl-month-grid' });
+    const grid = wrap.createDiv({ cls: 'dtl-month-grid' });
 
     const dates: moment.Moment[] = [];
     let cur = gridStart.clone();
@@ -324,22 +323,22 @@ export class TimelineView extends ItemView {
       const isCurrentMonth = day.isSame(this.focusDate, 'month');
       const isToday = day.isSame(moment(), 'day');
 
-      const cell = grid.createEl('div', {
+      const cell = grid.createDiv({
         cls: 'dtl-month-cell' + (isCurrentMonth ? '' : ' dtl-month-cell--out') + (isToday ? ' dtl-month-cell--today' : ''),
       });
-      cell.createEl('div', { cls: 'dtl-month-cell-day', text: String(day.date()) });
+      cell.createDiv({ cls: 'dtl-month-cell-day', text: String(day.date()) });
 
       const events = eventMap.get(dateStr) ?? [];
-      const chips = cell.createEl('div', { cls: 'dtl-month-chips' });
+      const chips = cell.createDiv({ cls: 'dtl-month-chips' });
       for (const ev of events.slice(0, 3)) {
-        const chip = chips.createEl('div', { cls: 'dtl-month-chip', text: ev.title });
+        const chip = chips.createDiv({ cls: 'dtl-month-chip', text: ev.title });
         if (ev.tag) chip.style.borderLeftColor = colorForTag(ev.tag);
       }
       if (events.length > 3)
-        chips.createEl('div', { cls: 'dtl-month-more', text: `+${events.length - 3}` });
+        chips.createDiv({ cls: 'dtl-month-more', text: `+${events.length - 3}` });
 
       const capturedDate = day.clone();
-      cell.addEventListener('click', () => { this.focusDate = capturedDate; this.mode = 'daily'; this.render(); });
+      cell.addEventListener('click', () => { this.focusDate = capturedDate; this.mode = 'daily'; void this.render(); });
     }
   }
 
@@ -347,7 +346,7 @@ export class TimelineView extends ItemView {
 
   private closePopup() {
     if (this.popupOutsideHandler) {
-      document.removeEventListener('pointerdown', this.popupOutsideHandler);
+      activeDocument.removeEventListener('pointerdown', this.popupOutsideHandler);
       this.popupOutsideHandler = null;
     }
     this.activePopup?.remove();
@@ -361,20 +360,20 @@ export class TimelineView extends ItemView {
     const titleInput = popup.createEl('input', {
       cls: 'dtl-popup-input dtl-popup-title',
       attr: { type: 'text', value: event.title, placeholder: t('title') },
-    }) as HTMLInputElement;
+    });
 
-    const timeRow = popup.createEl('div', { cls: 'dtl-popup-time-row' });
+    const timeRow = popup.createDiv({ cls: 'dtl-popup-time-row' });
     const startInput = timeRow.createEl('input', {
       cls: 'dtl-popup-input dtl-popup-time',
       attr: { type: 'time', value: `${pad(event.startHour)}:${pad(event.startMin)}`, step: '900' },
-    }) as HTMLInputElement;
-    timeRow.createEl('span', { cls: 'dtl-popup-time-sep', text: '–' });
+    });
+    timeRow.createSpan({ cls: 'dtl-popup-time-sep', text: '–' });
     const endInput = timeRow.createEl('input', {
       cls: 'dtl-popup-input dtl-popup-time',
       attr: { type: 'time', value: `${pad(event.endHour)}:${pad(event.endMin)}`, step: '900' },
-    }) as HTMLInputElement;
+    });
 
-    const btnRow = popup.createEl('div', { cls: 'dtl-popup-btn-row' });
+    const btnRow = popup.createDiv({ cls: 'dtl-popup-btn-row' });
     const saveBtn = btnRow.createEl('button', { cls: 'dtl-popup-btn dtl-popup-btn--primary', text: t('save') });
     const deleteBtn = btnRow.createEl('button', { cls: 'dtl-popup-btn dtl-popup-btn--danger', text: t('delete') });
     btnRow.createEl('button', { cls: 'dtl-popup-btn', text: t('cancel') })
@@ -386,7 +385,7 @@ export class TimelineView extends ItemView {
       const openBtn = btnRow.createEl('button', { cls: 'dtl-popup-btn dtl-popup-btn--link', text: '↗' });
       openBtn.setAttribute('aria-label', t('openNote', { name: wikiMatch[1] }));
       openBtn.addEventListener('click', () => {
-        this.app.workspace.openLinkText(wikiMatch[1], file.path, false);
+        void this.app.workspace.openLinkText(wikiMatch[1], file.path, false);
         this.closePopup();
       });
     }
@@ -418,14 +417,14 @@ export class TimelineView extends ItemView {
       if (this.mode === 'daily') await this.refreshDailyEvents(); else await this.render();
     };
 
-    saveBtn.addEventListener('click', doSave);
-    deleteBtn.addEventListener('click', doDelete);
+    saveBtn.addEventListener('click', () => { void doSave(); });
+    deleteBtn.addEventListener('click', () => { void doDelete(); });
     popup.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter') { e.preventDefault(); doSave(); }
+      if (e.key === 'Enter') { e.preventDefault(); void doSave(); }
       if (e.key === 'Escape') { e.preventDefault(); this.closePopup(); }
     });
 
-    requestAnimationFrame(() => { titleInput.focus(); titleInput.select(); });
+    window.requestAnimationFrame(() => { titleInput.focus(); titleInput.select(); });
   }
 
   private openAddPopup(clientX: number, clientY: number, startMin: number, endMin: number, file: TFile) {
@@ -435,20 +434,20 @@ export class TimelineView extends ItemView {
     const titleInput = popup.createEl('input', {
       cls: 'dtl-popup-input dtl-popup-title',
       attr: { type: 'text', placeholder: t('newEventTitle') },
-    }) as HTMLInputElement;
+    });
 
-    const timeRow = popup.createEl('div', { cls: 'dtl-popup-time-row' });
+    const timeRow = popup.createDiv({ cls: 'dtl-popup-time-row' });
     const startInput = timeRow.createEl('input', {
       cls: 'dtl-popup-input dtl-popup-time',
       attr: { type: 'time', value: `${pad(Math.floor(startMin / 60))}:${pad(startMin % 60)}`, step: '900' },
-    }) as HTMLInputElement;
-    timeRow.createEl('span', { cls: 'dtl-popup-time-sep', text: '–' });
+    });
+    timeRow.createSpan({ cls: 'dtl-popup-time-sep', text: '–' });
     const endInput = timeRow.createEl('input', {
       cls: 'dtl-popup-input dtl-popup-time',
       attr: { type: 'time', value: `${pad(Math.floor(endMin / 60))}:${pad(endMin % 60)}`, step: '900' },
-    }) as HTMLInputElement;
+    });
 
-    const btnRow = popup.createEl('div', { cls: 'dtl-popup-btn-row' });
+    const btnRow = popup.createDiv({ cls: 'dtl-popup-btn-row' });
     const addBtn = btnRow.createEl('button', { cls: 'dtl-popup-btn dtl-popup-btn--primary', text: t('add') });
     btnRow.createEl('button', { cls: 'dtl-popup-btn', text: t('cancel') })
       .addEventListener('click', () => this.closePopup());
@@ -471,22 +470,22 @@ export class TimelineView extends ItemView {
       if (this.mode === 'daily') await this.refreshDailyEvents(); else await this.render();
     };
 
-    addBtn.addEventListener('click', doAdd);
+    addBtn.addEventListener('click', () => { void doAdd(); });
     popup.addEventListener('keydown', (e: KeyboardEvent) => {
-      if (e.key === 'Enter') { e.preventDefault(); doAdd(); }
+      if (e.key === 'Enter') { e.preventDefault(); void doAdd(); }
       if (e.key === 'Escape') { e.preventDefault(); this.closePopup(); }
     });
 
-    requestAnimationFrame(() => titleInput.focus());
+    window.requestAnimationFrame(() => titleInput.focus());
   }
 
   private createPopup(clientX: number, clientY: number): HTMLElement {
-    const popup = document.body.createEl('div', { cls: 'dtl-popup' });
+    const popup = activeDocument.body.createDiv({ cls: 'dtl-popup' });
     this.activePopup = popup;
 
     popup.addEventListener('pointerdown', (e) => e.stopPropagation());
 
-    requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
       const w = popup.offsetWidth || 280, h = popup.offsetHeight || 180;
       let left = clientX + 8, top = clientY + 8;
       if (left + w > window.innerWidth - 8) left = clientX - w - 8;
@@ -501,7 +500,7 @@ export class TimelineView extends ItemView {
       }
     };
     this.popupOutsideHandler = outsideHandler;
-    setTimeout(() => document.addEventListener('pointerdown', outsideHandler), 0);
+    window.setTimeout(() => activeDocument.addEventListener('pointerdown', outsideHandler), 0);
 
     return popup;
   }
@@ -509,14 +508,14 @@ export class TimelineView extends ItemView {
   // ─── Stats ─────────────────────────────────────────────────────────────────
 
   private renderDailyStats(root: HTMLElement, events: ScheduleEvent[]) {
-    const statsEl = root.createEl('div', { cls: 'dtl-stats' });
+    const statsEl = root.createDiv({ cls: 'dtl-stats' });
     const totalMin = events.reduce((sum, ev) => sum + ev.endMinutes - ev.startMinutes, 0);
     const h = Math.floor(totalMin / 60), m = totalMin % 60;
 
-    const infoEl = statsEl.createEl('div', { cls: 'dtl-stats-info' });
-    infoEl.createEl('span', { cls: 'dtl-stats-count', text: t('eventCount', { count: events.length }) });
+    const infoEl = statsEl.createDiv({ cls: 'dtl-stats-info' });
+    infoEl.createSpan({ cls: 'dtl-stats-count', text: t('eventCount', { count: events.length }) });
     const duration = `${h}h${m > 0 ? ` ${m}m` : ''}`;
-    infoEl.createEl('span', { cls: 'dtl-stats-total', text: t('totalTime', { time: duration }) });
+    infoEl.createSpan({ cls: 'dtl-stats-total', text: t('totalTime', { time: duration }) });
 
     const tagMap = new Map<string, number>();
     for (const ev of events) {
@@ -524,9 +523,9 @@ export class TimelineView extends ItemView {
     }
 
     if (tagMap.size > 0) {
-      const tagsEl = statsEl.createEl('div', { cls: 'dtl-stats-tags' });
+      const tagsEl = statsEl.createDiv({ cls: 'dtl-stats-tags' });
       for (const [tag, min] of tagMap) {
-        const chip = tagsEl.createEl('span', { cls: 'dtl-stats-chip' });
+        const chip = tagsEl.createSpan({ cls: 'dtl-stats-chip' });
         chip.style.setProperty('--chip-color', colorForTag(tag));
         const th = Math.floor(min / 60), tm = min % 60;
         chip.textContent = `#${tag} ${th}h${tm > 0 ? ` ${tm}m` : ''}`;
@@ -537,10 +536,9 @@ export class TimelineView extends ItemView {
   // ─── Shared helpers ─────────────────────────────────────────────────────────
 
   private createGrid(parent: HTMLElement): HTMLElement {
-    const grid = parent.createEl('div', { cls: 'dtl-grid' });
+    const grid = parent.createDiv({ cls: 'dtl-grid' });
     for (let h = 0; h < 24; h++) {
-      grid.createEl('div', { cls: 'dtl-hour-row' })
-        .createEl('span', { cls: 'dtl-hour-label', text: h === 0 ? '' : `${pad(h)}:00` });
+      grid.createDiv({ cls: 'dtl-hour-row' }).createSpan({ cls: 'dtl-hour-label', text: h === 0 ? '' : `${pad(h)}:00` });
     }
     return grid;
   }
@@ -549,27 +547,27 @@ export class TimelineView extends ItemView {
     const top = event.startMinutes * this.pxPerMin;
     const height = Math.max((event.endMinutes - event.startMinutes) * this.pxPerMin, 24);
 
-    const el = container.createEl('div', { cls: 'dtl-event' + (compact ? ' dtl-event--compact' : '') });
+    const el = container.createDiv({ cls: 'dtl-event' + (compact ? ' dtl-event--compact' : '') });
     el.style.top = `${top}px`;
     el.style.height = `${height}px`;
 
     if (event.tag) el.style.borderLeftColor = colorForTag(event.tag);
 
-    if (!compact) el.createEl('div', { cls: 'dtl-event-resize-top' });
+    if (!compact) el.createDiv({ cls: 'dtl-event-resize-top' });
 
     if (!compact) {
-      el.createEl('div', {
+      el.createDiv({
         cls: 'dtl-event-time',
         text: `${pad(event.startHour)}:${pad(event.startMin)} – ${pad(event.endHour)}:${pad(event.endMin)}`,
       });
     } else if (height >= 36) {
-      el.createEl('div', {
+      el.createDiv({
         cls: 'dtl-event-time',
         text: `${pad(event.startHour)}:${pad(event.startMin)}`,
       });
     }
-    el.createEl('div', { cls: 'dtl-event-title', text: event.title });
-    if (!compact) el.createEl('div', { cls: 'dtl-event-resize' });
+    el.createDiv({ cls: 'dtl-event-title', text: event.title });
+    if (!compact) el.createDiv({ cls: 'dtl-event-resize' });
 
     return el;
   }
@@ -622,10 +620,10 @@ export class TimelineView extends ItemView {
 
   private showDragTooltip(clientX: number, clientY: number, text: string) {
     if (!this.dragTooltipEl) {
-      this.dragTooltipEl = document.body.createEl('div', { cls: 'dtl-drag-tooltip' });
+      this.dragTooltipEl = activeDocument.body.createDiv({ cls: 'dtl-drag-tooltip' });
     }
     this.dragTooltipEl.textContent = text;
-    this.dragTooltipEl.style.display = 'block';
+    this.dragTooltipEl.removeClass('dtl-hidden');
     this.dragTooltipEl.style.left = `${clientX + 14}px`;
     this.dragTooltipEl.style.top = `${clientY - 28}px`;
   }
@@ -636,7 +634,7 @@ export class TimelineView extends ItemView {
       this.dragTooltipEl.remove();
       this.dragTooltipEl = null;
     } else {
-      this.dragTooltipEl.style.display = 'none';
+      this.dragTooltipEl.addClass('dtl-hidden');
     }
   }
 
@@ -644,7 +642,7 @@ export class TimelineView extends ItemView {
 
   private attachDailyDrag(el: HTMLElement, event: ScheduleEvent, file: TFile) {
     const resizeHandle = el.querySelector('.dtl-event-resize') as HTMLElement;
-    const resizeTopHandle = el.querySelector('.dtl-event-resize-top') as HTMLElement | null;
+    const resizeTopHandle = el.querySelector('.dtl-event-resize-top');
     const duration = event.endMinutes - event.startMinutes;
     let startY = 0, startMin = 0, moved = false;
 
@@ -662,16 +660,16 @@ export class TimelineView extends ItemView {
       this.showDragTooltip(e.clientX, e.clientY, fmt(newStart, newStart + duration));
     };
 
-    const onMoveUp = async (e: PointerEvent) => {
+    const onMoveUp = (e: PointerEvent) => {
       el.classList.remove('dtl-dragging');
       el.releasePointerCapture(e.pointerId);
-      document.removeEventListener('pointermove', onMoveMove);
-      document.removeEventListener('pointerup', onMoveUp);
+      activeDocument.removeEventListener('pointermove', onMoveMove);
+      activeDocument.removeEventListener('pointerup', onMoveUp);
       this.hideDragTooltip();
       if (!moved) return;
       const snapped = Math.round((e.clientY - startY) / this.pxPerMin / SNAP_MIN) * SNAP_MIN;
       const newStart = Math.max(0, Math.min(1440 - duration, startMin + snapped));
-      if (newStart !== startMin) await this.saveEvent(file, event, newStart, newStart + duration);
+      if (newStart !== startMin) void this.saveEvent(file, event, newStart, newStart + duration);
     };
 
     el.addEventListener('pointerdown', (e: PointerEvent) => {
@@ -682,8 +680,8 @@ export class TimelineView extends ItemView {
       el.setPointerCapture(e.pointerId);
       startY = e.clientY;
       startMin = event.startMinutes;
-      document.addEventListener('pointermove', onMoveMove);
-      document.addEventListener('pointerup', onMoveUp);
+      activeDocument.addEventListener('pointermove', onMoveMove);
+      activeDocument.addEventListener('pointerup', onMoveUp);
     });
 
     // ── Bottom resize (end time) ──
@@ -698,14 +696,14 @@ export class TimelineView extends ItemView {
       this.showDragTooltip(e.clientX, e.clientY, fmt(event.startMinutes, newEnd));
     };
 
-    const onResizeUp = async (e: PointerEvent) => {
+    const onResizeUp = (e: PointerEvent) => {
       resizeHandle.releasePointerCapture(e.pointerId);
-      document.removeEventListener('pointermove', onResizeMove);
-      document.removeEventListener('pointerup', onResizeUp);
+      activeDocument.removeEventListener('pointermove', onResizeMove);
+      activeDocument.removeEventListener('pointerup', onResizeUp);
       this.hideDragTooltip();
       const snapped = Math.round((e.clientY - resizeStartY) / this.pxPerMin / SNAP_MIN) * SNAP_MIN;
       const newEnd = Math.max(event.startMinutes + SNAP_MIN, Math.min(1440, resizeStartEnd + snapped));
-      if (newEnd !== resizeStartEnd) await this.saveEvent(file, event, event.startMinutes, newEnd);
+      if (newEnd !== resizeStartEnd) void this.saveEvent(file, event, event.startMinutes, newEnd);
     };
 
     resizeHandle.addEventListener('pointerdown', (e: PointerEvent) => {
@@ -713,8 +711,8 @@ export class TimelineView extends ItemView {
       resizeHandle.setPointerCapture(e.pointerId);
       resizeStartY = e.clientY;
       resizeStartEnd = event.endMinutes;
-      document.addEventListener('pointermove', onResizeMove);
-      document.addEventListener('pointerup', onResizeUp);
+      activeDocument.addEventListener('pointermove', onResizeMove);
+      activeDocument.addEventListener('pointerup', onResizeUp);
     });
 
     // ── Top resize (start time) ──
@@ -731,14 +729,14 @@ export class TimelineView extends ItemView {
         this.showDragTooltip(e.clientX, e.clientY, fmt(newStart, event.endMinutes));
       };
 
-      const onTopResizeUp = async (e: PointerEvent) => {
+      const onTopResizeUp = (e: PointerEvent) => {
         resizeTopHandle.releasePointerCapture(e.pointerId);
-        document.removeEventListener('pointermove', onTopResizeMove);
-        document.removeEventListener('pointerup', onTopResizeUp);
+        activeDocument.removeEventListener('pointermove', onTopResizeMove);
+        activeDocument.removeEventListener('pointerup', onTopResizeUp);
         this.hideDragTooltip();
         const snapped = Math.round((e.clientY - topStartY) / this.pxPerMin / SNAP_MIN) * SNAP_MIN;
         const newStart = Math.max(0, Math.min(event.endMinutes - SNAP_MIN, topOrigStart + snapped));
-        if (newStart !== topOrigStart) await this.saveEvent(file, event, newStart, event.endMinutes);
+        if (newStart !== topOrigStart) void this.saveEvent(file, event, newStart, event.endMinutes);
       };
 
       resizeTopHandle.addEventListener('pointerdown', (e: PointerEvent) => {
@@ -746,8 +744,8 @@ export class TimelineView extends ItemView {
         resizeTopHandle.setPointerCapture(e.pointerId);
         topStartY = e.clientY;
         topOrigStart = event.startMinutes;
-        document.addEventListener('pointermove', onTopResizeMove);
-        document.addEventListener('pointerup', onTopResizeUp);
+        activeDocument.addEventListener('pointermove', onTopResizeMove);
+        activeDocument.addEventListener('pointerup', onTopResizeUp);
       });
     }
   }
@@ -779,46 +777,45 @@ export class TimelineView extends ItemView {
           `${pad(Math.floor(newStart / 60))}:${pad(newStart % 60)} – ${pad(Math.floor((newStart + duration) / 60))}:${pad((newStart + duration) % 60)}`);
       };
 
-      const onUp = async (e: PointerEvent) => {
+      const onUp = (e: PointerEvent) => {
         el.classList.remove('dtl-dragging');
         el.releasePointerCapture(e.pointerId);
-        document.removeEventListener('pointermove', onMove);
-        document.removeEventListener('pointerup', onUp);
+        activeDocument.removeEventListener('pointermove', onMove);
+        activeDocument.removeEventListener('pointerup', onUp);
         this.hideDragTooltip();
         if (!moved) return;
         const newStart = calcStart(e.clientY);
         if (newStart !== event.startMinutes) {
-          await this.saveEvent(file, event, newStart, newStart + duration);
-          await this.render();
+          void this.saveEvent(file, event, newStart, newStart + duration).then(() => this.render());
         }
       };
 
-      document.addEventListener('pointermove', onMove);
-      document.addEventListener('pointerup', onUp);
+      activeDocument.addEventListener('pointermove', onMove);
+      activeDocument.addEventListener('pointerup', onUp);
     });
   }
 
   // ─── Hover preview ghost ──────────────────────────────────────────────────────
 
   private setupHoverPreview(grid: HTMLElement) {
-    const ghost = grid.createEl('div', { cls: 'dtl-ghost' });
+    const ghost = grid.createDiv({ cls: 'dtl-ghost' });
 
     grid.addEventListener('mousemove', (e: MouseEvent) => {
       if ((e.target as HTMLElement).closest('.dtl-event')) {
-        ghost.style.display = 'none';
+        ghost.addClass('dtl-hidden');
         return;
       }
       const dur = this.plugin.settings.defaultDuration;
       const y = e.clientY - grid.getBoundingClientRect().top;
       const startMin = Math.max(0, Math.min(1440 - dur, Math.round(y / this.pxPerMin / dur) * dur));
       const endMin = startMin + dur;
-      ghost.style.display = 'block';
+      ghost.removeClass('dtl-hidden');
       ghost.style.top = `${startMin * this.pxPerMin}px`;
       ghost.style.height = `${dur * this.pxPerMin}px`;
       ghost.textContent = `${pad(Math.floor(startMin / 60))}:${pad(startMin % 60)} – ${pad(Math.floor(endMin / 60))}:${pad(endMin % 60)}`;
     });
 
-    grid.addEventListener('mouseleave', () => { ghost.style.display = 'none'; });
+    grid.addEventListener('mouseleave', () => { ghost.addClass('dtl-hidden'); });
   }
 
   // ─── Data ───────────────────────────────────────────────────────────────────

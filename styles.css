@@ -675,3 +675,4 @@
   background: rgba(var(--interactive-accent-rgb, 100, 130, 230), 0.08);
   color: var(--interactive-accent);
 }
+.dtl-hidden { display: none !important; }

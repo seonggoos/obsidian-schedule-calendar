@@ -12,23 +12,24 @@ export default class TimelinePlugin extends Plugin {
 
     this.registerView(TIMELINE_VIEW_TYPE, (leaf) => new TimelineView(leaf, this));
 
-    this.addRibbonIcon('calendar-days', t('pluginName'), () => this.activateView());
+    this.addRibbonIcon('calendar-days', t('pluginName'), () => { void this.activateView(); });
 
     this.addCommand({
-      id: 'open-schedule-calendar',
+      id: 'open-calendar',
       name: t('openCommand'),
-      callback: () => this.activateView(),
+      callback: () => { void this.activateView(); },
     });
 
     this.addSettingTab(new TimelineSettingTab(this.app, this));
   }
 
-  async onunload() {
+  onunload() {
     // Obsidian handles leaf cleanup on unload
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const stored = await this.loadData() as unknown;
+    this.settings = { ...DEFAULT_SETTINGS, ...(stored && typeof stored === 'object' ? stored : {}) };
   }
 
   async saveSettings() {
@@ -42,6 +43,6 @@ export default class TimelinePlugin extends Plugin {
       leaf = workspace.getRightLeaf(false)!;
       await leaf.setViewState({ type: TIMELINE_VIEW_TYPE, active: true });
     }
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
   }
 }
