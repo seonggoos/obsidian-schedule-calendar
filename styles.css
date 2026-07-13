@@ -125,8 +125,8 @@
 
 .dtl-event {
   position: absolute;
-  left: 3px;
-  right: 3px;
+  left: calc(var(--event-column, 0) * 100% / var(--event-columns, 1) + 3px);
+  width: calc(100% / var(--event-columns, 1) - 6px);
   background: var(--background-secondary);
   border-left: 3px solid var(--interactive-accent);
   border-radius: 4px;
@@ -139,6 +139,13 @@
   overflow: hidden;
   transition: box-shadow 0.1s;
 }
+
+.dtl-event.is-completed .dtl-event-title,
+.dtl-all-day-event.is-completed span { text-decoration: line-through; opacity: 0.65; }
+.dtl-event-checkbox { float: left; margin: 1px 4px 0 0; }
+.dtl-all-day { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; }
+.dtl-all-day-event { display: flex; gap: 4px; align-items: center; padding: 3px 7px; border-radius: 4px; background: var(--background-secondary); }
+.dtl-all-day-toggle { display: flex; gap: 6px; align-items: center; font-size: 12px; }
 
 .dtl-event:hover {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);

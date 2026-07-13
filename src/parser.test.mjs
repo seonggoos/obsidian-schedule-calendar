@@ -5,6 +5,7 @@ import {
   insertEventIntoContent,
   parseSchedules,
   parseClockTime,
+  toggleEventCompletion,
   updateEventInContent,
 } from "./parser.ts";
 
@@ -97,4 +98,49 @@ test("내용이 같은 일정 두 개 중 선택한 한 줄만 수정한다", ()
   });
   assert.equal(parseSchedules(updated).filter((event) => event.title === "Same").length, 1);
   assert.equal(parseSchedules(updated).filter((event) => event.title === "Changed").length, 1);
+});
+
+test("체크박스가 있는 시간 일정을 완료 상태와 함께 파싱한다", () => {
+  const content = `### Schedule\n- [ ] 09:00 - 10:00 Open\n- [x] 10:00 - 11:00 Done`;
+  const events = parseSchedules(content);
+  assert.deepEqual(events.map(({ kind, completed, hasCheckbox }) => ({ kind, completed, hasCheckbox })), [
+    { kind: "timed", completed: false, hasCheckbox: true },
+    { kind: "timed", completed: true, hasCheckbox: true },
+  ]);
+});
+
+test("시간이 없는 체크박스 항목을 종일 일정으로 파싱한다", () => {
+  const [event] = parseSchedules(`### Schedule\n- [ ] Conference #Work`);
+  assert.equal(event.kind, "all-day");
+  assert.equal(event.title, "Conference #Work");
+  assert.equal(event.tag, "work");
+});
+
+test("완료 토글은 대상 한 줄만 바꾸고 다시 되돌릴 수 있다", () => {
+  const content = `### Schedule\n- 09:00 - 10:00 Focus\n- 11:00 - 12:00 Keep`;
+  const [event] = parseSchedules(content);
+  const completed = toggleEventCompletion(content, event);
+  assert.ok(completed.includes("- [x] 09:00 - 10:00 Focus"));
+  assert.ok(completed.includes("- 11:00 - 12:00 Keep"));
+  const [completedEvent] = parseSchedules(completed);
+  assert.equal(toggleEventCompletion(completed, completedEvent),
+    `### Schedule\n- [ ] 09:00 - 10:00 Focus\n- 11:00 - 12:00 Keep`);
+});
+
+test("기존 비체크박스 일정은 편집해도 기존 문법을 보존한다", () => {
+  const [event] = parseSchedules(`### Schedule\n- 09:00 - 10:00 Legacy`);
+  const updated = updateEventInContent(`### Schedule\n- 09:00 - 10:00 Legacy`, event.raw, {
+    ...event,
+    title: "Updated",
+  });
+  assert.equal(updated, `### Schedule\n- 09:00 - 10:00 Updated`);
+});
+
+test("종일 일정은 시간 일정 앞에 삽입한다", () => {
+  const content = `### Schedule\n- 09:00 - 10:00 Focus`;
+  const allDay = {
+    id: "all-day", title: "Holiday", kind: "all-day", completed: false, hasCheckbox: true,
+    startHour: 0, startMin: 0, endHour: 0, endMin: 0, startMinutes: 0, endMinutes: 0, raw: "",
+  };
+  assert.equal(insertEventIntoContent(content, allDay), `### Schedule\n- [ ] Holiday\n- 09:00 - 10:00 Focus`);
 });

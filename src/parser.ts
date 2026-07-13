@@ -2,6 +2,9 @@ export interface ScheduleEvent {
   id: string;
   title: string;
   tag?: string;
+  kind: 'timed' | 'all-day';
+  completed: boolean;
+  hasCheckbox: boolean;
   startHour: number;
   startMin: number;
   endHour: number;
@@ -13,7 +16,8 @@ export interface ScheduleEvent {
   sourceLine?: number;
 }
 
-const SCHEDULE_REGEX = /^- (\d{2}):(\d{2})\s*[-–]\s*(\d{2}):(\d{2})\s+(.+)$/;
+const SCHEDULE_REGEX = /^- (?:\[([ xX])\]\s+)?(\d{2}):(\d{2})\s*[-–]\s*(\d{2}):(\d{2})\s+(.+)$/;
+const ALL_DAY_REGEX = /^- \[([ xX])\]\s+(.+)$/;
 
 const TAG_PALETTE = ['#4A90E2', '#27AE60', '#F39C12', '#8E44AD', '#E74C3C', '#16A085', '#D35400', '#2980B9'];
 
@@ -35,9 +39,24 @@ export function parseSchedules(content: string, sectionName = 'Schedule'): Sched
     if (!inSection) continue;
 
     const match = line.match(SCHEDULE_REGEX);
-    if (!match) continue;
+    if (!match) {
+      const allDay = line.match(ALL_DAY_REGEX);
+      if (!allDay) continue;
+      const [, checked, title] = allDay;
+      const trimTitle = title.trim();
+      const tagMatch = trimTitle.match(/#([A-Za-z]\w*)/);
+      events.push({
+        id: `all-day-${sourceLine}-${trimTitle}`,
+        title: trimTitle,
+        tag: tagMatch ? tagMatch[1].toLowerCase() : undefined,
+        kind: 'all-day', completed: checked.toLowerCase() === 'x', hasCheckbox: true,
+        startHour: 0, startMin: 0, endHour: 0, endMin: 0,
+        startMinutes: 0, endMinutes: 0, raw: line, sourceLine,
+      });
+      continue;
+    }
 
-    const [, sh, sm, eh, em, title] = match;
+    const [, checked, sh, sm, eh, em, title] = match;
     const start = parseClockTime(`${sh}:${sm}`), end = parseClockTime(`${eh}:${em}`);
     if (!start || !end) continue;
     const [startH, startM] = start, [endH, endM] = end;
@@ -49,6 +68,7 @@ export function parseSchedules(content: string, sectionName = 'Schedule'): Sched
       id: `${sh}${sm}${eh}${em}${trimTitle}`,
       title: trimTitle,
       tag: tagMatch ? tagMatch[1].toLowerCase() : undefined,
+      kind: 'timed', completed: checked?.toLowerCase() === 'x', hasCheckbox: checked !== undefined,
       startHour: startH, startMin: startM,
       endHour: endH, endMin: endM,
       startMinutes: startH * 60 + startM,
@@ -111,7 +131,7 @@ export function insertEventIntoContent(
     if (lines[i].startsWith('###')) break;
     const m = lines[i].match(SCHEDULE_REGEX);
     if (m) {
-      const startM = parseInt(m[1]) * 60 + parseInt(m[2]);
+      const startM = parseInt(m[2]) * 60 + parseInt(m[3]);
       scheduleLines.push({ idx: i, startMinutes: startM });
     }
   }
@@ -130,7 +150,15 @@ export function insertEventIntoContent(
 }
 
 export function formatEventLine(event: ScheduleEvent): string {
-  return `- ${pad(event.startHour)}:${pad(event.startMin)} - ${pad(event.endHour)}:${pad(event.endMin)} ${event.title}`;
+  const checkbox = event.hasCheckbox || event.completed ? `[${event.completed ? 'x' : ' '}] ` : '';
+  if (event.kind === 'all-day') return `- ${checkbox}${event.title}`;
+  return `- ${checkbox}${pad(event.startHour)}:${pad(event.startMin)} - ${pad(event.endHour)}:${pad(event.endMin)} ${event.title}`;
+}
+
+export function toggleEventCompletion(content: string, event: ScheduleEvent): string {
+  return updateEventInContent(content, event.raw, {
+    ...event, completed: !event.completed, hasCheckbox: true,
+  });
 }
 
 export function pad(n: number): string {

@@ -11,6 +11,7 @@ A visual interactive calendar for [Obsidian](https://obsidian.md) — turn your 
 
 ### Interactions
 - **Drag to move** — drag events up/down to reschedule (snaps to 15-minute intervals)
+- **Move between days** — drag a timed event horizontally to another day in weekly view
 - **Resize** — drag the bottom or top edge of an event to adjust end or start time
 - **Click to edit** — click any event to open a popup and edit title or time
 - **Delete** — remove an event directly from the edit popup
@@ -18,6 +19,15 @@ A visual interactive calendar for [Obsidian](https://obsidian.md) — turn your 
 - **Mobile-friendly add** — use the `+ 일정 추가` button on touch devices; missing daily notes can be created in one click
 - **Undo** — press `Cmd/Ctrl+Z` to revert the last change (up to 20 steps)
 - **Safe auto-sync** — atomic note updates preserve concurrent edits; undo stops if the note changed elsewhere
+- **Completion and all-day events** — use Markdown checkboxes to track completion and create events without a time
+
+### Daily Notes integration
+- **Automatic settings** — uses the core Daily Notes folder, date format, and template when the plugin is enabled
+- **Template-aware creation** — creates missing notes through the core Daily Notes workflow, then safely adds the schedule section
+- **Manual fallback** — configure a folder and Moment.js date format when Daily Notes is disabled or manual mode is preferred
+
+### Overlapping events
+Events that overlap in daily or weekly view are laid out side by side instead of covering one another.
 
 ### Drag tooltip
 A floating `HH:MM – HH:MM` label follows your cursor during any drag or resize so you always know exactly where an event will land.
@@ -62,13 +72,15 @@ Your daily note must contain a `### Schedule` section with entries in this forma
 
 ```markdown
 ### Schedule
+- [ ] All-day preparation #work
+- [x] 08:30 - 09:00 Completed routine
 - 09:00 - 10:00 Morning routine
 - 10:00 - 13:00 Deep work #work
 - 13:00 - 14:00 Lunch #life
 - 14:00 - 18:00 Meetings #work
 ```
 
-The section name (`Schedule`) is configurable in settings. Adding `#tag` is optional — events without a tag use the default accent color.
+The section name (`Schedule`) is configurable in settings. A checkbox without a time is treated as an all-day event. Timed entries may use a checkbox to track completion. Legacy timed entries without checkboxes remain supported and keep their original format when edited. Adding `#tag` is optional — events without a tag use the default accent color.
 
 ## Installation
 
@@ -105,15 +117,17 @@ Go to **Settings → Schedule Calendar** to configure:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
+| Daily note settings | `Automatic` | Uses the core Daily Notes configuration, or switches to manual settings |
 | Schedule section | `Schedule` | The `###` heading to parse schedules from |
-| Daily note folder | `30.Calendar/31.Daily/` | Folder path where daily notes are stored |
+| Daily note folder | `30.Calendar/31.Daily/` | Manual-mode folder where daily notes are stored |
+| Date format | `YYYY-MM-DD` | Manual-mode Moment.js format used for daily note file names |
 | Default event duration | `30 min` | Default event duration when adding via double-click (15 / 30 / 60 / 90 / 120 min) |
 
 ## Compatibility
 
-- Obsidian v1.0.0+
+- Obsidian v1.8.7+
 - Works with [Daily Notes](https://help.obsidian.md/Plugins/Daily+notes) core plugin
-- Works with [Periodic Notes](https://github.com/liamcain/obsidian-periodic-notes) plugin
+- Other daily-note layouts can be configured with manual folder and date-format settings
 
 ## License
 

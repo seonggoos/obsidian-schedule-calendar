@@ -1,4 +1,4 @@
-import { ItemView, WorkspaceLeaf, TFile, moment, normalizePath, Notice } from 'obsidian';
+import { ItemView, WorkspaceLeaf, TFile, moment, Notice } from 'obsidian';
 import {
   parseSchedules,
   updateEventInContent,
@@ -8,9 +8,12 @@ import {
   ScheduleEvent,
   pad,
   parseClockTime,
+  toggleEventCompletion,
 } from './parser';
 import type TimelinePlugin from './main';
 import { locale, t } from './i18n';
+import { DailyNoteService } from './daily-notes';
+import { layoutOverlappingEvents } from './overlap';
 
 export const TIMELINE_VIEW_TYPE = 'schedule-calendar';
 const BASE_PX_PER_MIN = 1.2;
@@ -18,6 +21,7 @@ const SNAP_MIN = 15;
 const ZOOM_LEVELS = [0.75, 1, 1.5, 2];
 
 type ViewMode = 'daily' | 'weekly' | 'monthly';
+type FileChange = { file: TFile; before: string; after: string };
 
 export class TimelineView extends ItemView {
   private mode: ViewMode = 'daily';
@@ -28,11 +32,12 @@ export class TimelineView extends ItemView {
   private nowInterval: number | null = null;
   private activePopup: HTMLElement | null = null;
   private zoomLevel = 1;
-  private undoStack: Array<{ file: TFile; before: string; after: string }> = [];
+  private undoStack: Array<{ changes: FileChange[] }> = [];
   private dragTooltipEl: HTMLElement | null = null;
   private popupOutsideHandler: ((e: PointerEvent) => void) | null = null;
 
   private get pxPerMin() { return BASE_PX_PER_MIN * this.zoomLevel; }
+  private get dailyNotes() { return new DailyNoteService(this.app, this.plugin.settings); }
 
   constructor(leaf: WorkspaceLeaf, private plugin: TimelinePlugin) {
     super(leaf);
@@ -140,20 +145,15 @@ export class TimelineView extends ItemView {
 
   private async renderDailyView(root: HTMLElement) {
     this.currentFile = null;
-    const dateStr = this.focusDate.format('YYYY-MM-DD');
-    const filePath = normalizePath(`${this.plugin.settings.dailyNotePath}${dateStr}.md`);
-    const file = this.app.vault.getAbstractFileByPath(filePath);
+    const filePath = this.dailyNotes.resolvePath(this.focusDate);
+    const file = this.dailyNotes.find(this.focusDate);
     const wrap = root.createDiv({ cls: 'dtl-wrap' });
 
     if (!file || !(file instanceof TFile)) {
       wrap.createDiv({ cls: 'dtl-empty', text: `${t('noDailyNote')}\n${filePath}` });
       const createBtn = wrap.createEl('button', { cls: 'dtl-today-btn', text: t('createDailyNote') });
       createBtn.addEventListener('click', () => { void (async () => {
-        const folder = normalizePath(this.plugin.settings.dailyNotePath).replace(/\/$/, '');
-        if (folder && !(await this.app.vault.adapter.exists(folder))) {
-          await this.app.vault.createFolder(folder);
-        }
-        await this.app.vault.create(filePath, `### ${this.plugin.settings.scheduleSection}\n`);
+        await this.dailyNotes.create(this.focusDate, this.plugin.settings.scheduleSection);
         await this.render();
       })(); });
       return;
@@ -162,6 +162,7 @@ export class TimelineView extends ItemView {
     this.currentFile = file;
     const content = await this.app.vault.read(file);
     const events = parseSchedules(content, this.plugin.settings.scheduleSection);
+    this.renderAllDayEvents(root, events, file);
 
     const grid = this.createGrid(wrap);
     this.eventsEl = grid.createDiv({ cls: 'dtl-events' });
@@ -202,10 +203,28 @@ export class TimelineView extends ItemView {
 
   private renderDailyEvents(container: HTMLElement, events: ScheduleEvent[], file: TFile) {
     container.empty();
-    for (const event of events) {
-      const el = this.createEventEl(container, event, false);
+    for (const { event, column, columnCount } of layoutOverlappingEvents(events)) {
+      const el = this.createEventEl(container, event, false, column, columnCount);
       this.attachClickPopup(el, event, file);
+      this.attachCompletionToggle(el, event, file);
       this.attachDailyDrag(el, event, file);
+    }
+  }
+
+  private renderAllDayEvents(parent: HTMLElement, events: ScheduleEvent[], file: TFile) {
+    const allDay = events.filter((event) => event.kind === 'all-day');
+    if (allDay.length === 0) return;
+    const strip = parent.createDiv({ cls: 'dtl-all-day' });
+    for (const event of allDay) {
+      const el = strip.createDiv({ cls: `dtl-all-day-event${event.completed ? ' is-completed' : ''}` });
+      const checkbox = el.createEl('input', { attr: { type: 'checkbox' } });
+      checkbox.checked = event.completed;
+      checkbox.addEventListener('change', () => { void this.toggleCompletion(file, event); });
+      el.createSpan({ text: event.title });
+      el.addEventListener('click', (e) => {
+        if (e.target === checkbox) return;
+        this.openEditPopup(e.clientX, e.clientY, event, file);
+      });
     }
   }
 
@@ -243,24 +262,26 @@ export class TimelineView extends ItemView {
     }
 
     const dayData = await Promise.all(days.map(async (day) => {
-      const fp = normalizePath(`${this.plugin.settings.dailyNotePath}${day.format('YYYY-MM-DD')}.md`);
-      const f = this.app.vault.getAbstractFileByPath(fp);
-      if (!(f instanceof TFile)) return { day, file: null as TFile | null, events: [] as ScheduleEvent[] };
+      const f = this.dailyNotes.find(day);
+      if (!f) return { day, file: null as TFile | null, events: [] as ScheduleEvent[] };
       return { day, file: f, events: parseSchedules(await this.app.vault.read(f), this.plugin.settings.scheduleSection) };
     }));
 
     for (const { day, file, events } of dayData) {
       const isToday = day.isSame(moment(), 'day');
       const col = colsWrap.createDiv({ cls: 'dtl-week-col' + (isToday ? ' today' : '') });
+      col.dataset.date = day.format('YYYY-MM-DD');
 
       for (let h = 0; h < 24; h++) col.createDiv({ cls: 'dtl-hour-row' });
       const eventsEl = col.createDiv({ cls: 'dtl-events' });
 
       if (file) {
-        for (const event of events) {
-          const el = this.createEventEl(eventsEl, event, true);
+        this.renderAllDayEvents(col, events, file);
+        for (const { event, column, columnCount } of layoutOverlappingEvents(events)) {
+          const el = this.createEventEl(eventsEl, event, true, column, columnCount);
           this.attachClickPopup(el, event, file);
-          this.attachWeeklyDrag(el, event, file, col);
+          this.attachCompletionToggle(el, event, file);
+          this.attachWeeklyDrag(el, event, file, col, day);
         }
 
         this.setupHoverPreview(col);
@@ -311,8 +332,7 @@ export class TimelineView extends ItemView {
 
     const eventMap = new Map<string, ScheduleEvent[]>();
     await Promise.all(dates.map(async (day) => {
-      const fp = normalizePath(`${this.plugin.settings.dailyNotePath}${day.format('YYYY-MM-DD')}.md`);
-      const f = this.app.vault.getAbstractFileByPath(fp);
+      const f = this.dailyNotes.find(day);
       eventMap.set(day.format('YYYY-MM-DD'), f instanceof TFile
         ? parseSchedules(await this.app.vault.read(f), this.plugin.settings.scheduleSection)
         : []);
@@ -363,6 +383,7 @@ export class TimelineView extends ItemView {
     });
 
     const timeRow = popup.createDiv({ cls: 'dtl-popup-time-row' });
+    if (event.kind === 'all-day') timeRow.addClass('dtl-hidden');
     const startInput = timeRow.createEl('input', {
       cls: 'dtl-popup-input dtl-popup-time',
       attr: { type: 'time', value: `${pad(event.startHour)}:${pad(event.startMin)}`, step: '900' },
@@ -372,7 +393,6 @@ export class TimelineView extends ItemView {
       cls: 'dtl-popup-input dtl-popup-time',
       attr: { type: 'time', value: `${pad(event.endHour)}:${pad(event.endMin)}`, step: '900' },
     });
-
     const btnRow = popup.createDiv({ cls: 'dtl-popup-btn-row' });
     const saveBtn = btnRow.createEl('button', { cls: 'dtl-popup-btn dtl-popup-btn--primary', text: t('save') });
     const deleteBtn = btnRow.createEl('button', { cls: 'dtl-popup-btn dtl-popup-btn--danger', text: t('delete') });
@@ -394,9 +414,9 @@ export class TimelineView extends ItemView {
       const title = titleInput.value.trim();
       if (!title) return;
       const start = parseClockTime(startInput.value), end = parseClockTime(endInput.value);
-      if (!start || !end) return new Notice(t('invalidTime'));
-      const [sh, sm] = start, [eh, em] = end;
-      if (eh * 60 + em <= sh * 60 + sm) return new Notice(t('reversedTime'));
+      if (event.kind === 'timed' && (!start || !end)) return new Notice(t('invalidTime'));
+      const [sh, sm] = start ?? [0, 0], [eh, em] = end ?? [0, 0];
+      if (event.kind === 'timed' && eh * 60 + em <= sh * 60 + sm) return new Notice(t('reversedTime'));
       const updated: ScheduleEvent = {
         ...event, title,
         startHour: sh, startMin: sm, endHour: eh, endMin: em,
@@ -406,7 +426,7 @@ export class TimelineView extends ItemView {
         updateEventInContent(content, event.raw, updated));
       if (!changed) return new Notice(t('staleEvent'));
       this.closePopup();
-      if (this.mode === 'daily') await this.refreshDailyEvents(); else await this.render();
+      await this.render();
     };
 
     const doDelete = async () => {
@@ -414,7 +434,7 @@ export class TimelineView extends ItemView {
         deleteEventFromContent(content, event.raw, event.sourceLine));
       if (!changed) return new Notice(t('staleEvent'));
       this.closePopup();
-      if (this.mode === 'daily') await this.refreshDailyEvents(); else await this.render();
+      await this.render();
     };
 
     saveBtn.addEventListener('click', () => { void doSave(); });
@@ -446,6 +466,10 @@ export class TimelineView extends ItemView {
       cls: 'dtl-popup-input dtl-popup-time',
       attr: { type: 'time', value: `${pad(Math.floor(endMin / 60))}:${pad(endMin % 60)}`, step: '900' },
     });
+    const allDayLabel = popup.createEl('label', { cls: 'dtl-all-day-toggle' });
+    const allDayInput = allDayLabel.createEl('input', { attr: { type: 'checkbox' } });
+    allDayLabel.createSpan({ text: t('allDay') });
+    allDayInput.addEventListener('change', () => timeRow.toggleClass('dtl-hidden', allDayInput.checked));
 
     const btnRow = popup.createDiv({ cls: 'dtl-popup-btn-row' });
     const addBtn = btnRow.createEl('button', { cls: 'dtl-popup-btn dtl-popup-btn--primary', text: t('add') });
@@ -456,18 +480,19 @@ export class TimelineView extends ItemView {
       const title = titleInput.value.trim();
       if (!title) return;
       const start = parseClockTime(startInput.value), end = parseClockTime(endInput.value);
-      if (!start || !end) return new Notice(t('invalidTime'));
-      const [sh, sm] = start, [eh, em] = end;
-      if (eh * 60 + em <= sh * 60 + sm) return new Notice(t('reversedTime'));
+      if (!allDayInput.checked && (!start || !end)) return new Notice(t('invalidTime'));
+      const [sh, sm] = start ?? [0, 0], [eh, em] = end ?? [0, 0];
+      if (!allDayInput.checked && eh * 60 + em <= sh * 60 + sm) return new Notice(t('reversedTime'));
       const newEvent: ScheduleEvent = {
         id: `new_${Date.now()}`, title,
+        kind: allDayInput.checked ? 'all-day' : 'timed', completed: false, hasCheckbox: true,
         startHour: sh, startMin: sm, endHour: eh, endMin: em,
         startMinutes: sh * 60 + sm, endMinutes: eh * 60 + em, raw: '',
       };
       await this.applyFileEdit(file, (content) =>
         insertEventIntoContent(content, newEvent, this.plugin.settings.scheduleSection));
       this.closePopup();
-      if (this.mode === 'daily') await this.refreshDailyEvents(); else await this.render();
+      await this.render();
     };
 
     addBtn.addEventListener('click', () => { void doAdd(); });
@@ -543,17 +568,21 @@ export class TimelineView extends ItemView {
     return grid;
   }
 
-  private createEventEl(container: HTMLElement, event: ScheduleEvent, compact: boolean): HTMLElement {
+  private createEventEl(container: HTMLElement, event: ScheduleEvent, compact: boolean, column = 0, columnCount = 1): HTMLElement {
     const top = event.startMinutes * this.pxPerMin;
     const height = Math.max((event.endMinutes - event.startMinutes) * this.pxPerMin, 24);
 
-    const el = container.createDiv({ cls: 'dtl-event' + (compact ? ' dtl-event--compact' : '') });
+    const el = container.createDiv({ cls: 'dtl-event' + (compact ? ' dtl-event--compact' : '') + (event.completed ? ' is-completed' : '') });
+    el.setCssProps({ '--event-column': String(column), '--event-columns': String(columnCount) });
     el.style.top = `${top}px`;
     el.style.height = `${height}px`;
 
     if (event.tag) el.style.borderLeftColor = colorForTag(event.tag);
 
     if (!compact) el.createDiv({ cls: 'dtl-event-resize-top' });
+
+    const checkbox = el.createEl('input', { cls: 'dtl-event-checkbox', attr: { type: 'checkbox' } });
+    checkbox.checked = event.completed;
 
     if (!compact) {
       el.createDiv({
@@ -570,6 +599,19 @@ export class TimelineView extends ItemView {
     if (!compact) el.createDiv({ cls: 'dtl-event-resize' });
 
     return el;
+  }
+
+  private attachCompletionToggle(el: HTMLElement, event: ScheduleEvent, file: TFile) {
+    const checkbox = el.querySelector<HTMLInputElement>('.dtl-event-checkbox');
+    checkbox?.addEventListener('pointerdown', (e) => e.stopPropagation());
+    checkbox?.addEventListener('click', (e) => e.stopPropagation());
+    checkbox?.addEventListener('change', () => { void this.toggleCompletion(file, event); });
+  }
+
+  private async toggleCompletion(file: TFile, event: ScheduleEvent) {
+    const changed = await this.applyFileEdit(file, (content) => toggleEventCompletion(content, event));
+    if (!changed) new Notice(t('staleEvent'));
+    await this.render();
   }
 
   private attachClickPopup(el: HTMLElement, event: ScheduleEvent, file: TFile) {
@@ -589,18 +631,15 @@ export class TimelineView extends ItemView {
   private async undo() {
     const last = this.undoStack.pop();
     if (!last) return;
-    let restored = false;
-    await this.app.vault.process(last.file, (current) => {
-      if (current !== last.after) return current;
-      restored = true;
-      return last.before;
-    });
-    if (!restored) {
+    const current = await Promise.all(last.changes.map((change) => this.app.vault.read(change.file)));
+    if (current.some((content, index) => content !== last.changes[index].after)) {
       this.undoStack.push(last);
       new Notice(t('undoConflict'));
       return;
     }
-    if (this.mode !== 'daily') await this.render();
+    for (const change of last.changes)
+      await this.app.vault.process(change.file, (content) => content === change.after ? change.before : content);
+    await this.render();
   }
 
   private async applyFileEdit(file: TFile, transform: (content: string) => string): Promise<boolean> {
@@ -611,7 +650,7 @@ export class TimelineView extends ItemView {
       return after;
     });
     if (before === after) return false;
-    this.undoStack.push({ file, before, after });
+    this.undoStack.push({ changes: [{ file, before, after }] });
     if (this.undoStack.length > 20) this.undoStack.shift();
     return true;
   }
@@ -752,7 +791,7 @@ export class TimelineView extends ItemView {
 
   // ─── Weekly drag (vertical time change only) ─────────────────────────────────
 
-  private attachWeeklyDrag(el: HTMLElement, event: ScheduleEvent, file: TFile, col: HTMLElement) {
+  private attachWeeklyDrag(el: HTMLElement, event: ScheduleEvent, file: TFile, col: HTMLElement, sourceDay: moment.Moment) {
     const duration = event.endMinutes - event.startMinutes;
     let grabOffsetPx = 0, moved = false;
 
@@ -763,15 +802,18 @@ export class TimelineView extends ItemView {
       el.classList.add('dtl-dragging');
       el.setPointerCapture(e.pointerId);
 
-      const calcStart = (clientY: number) => {
-        const rawTopPx = clientY - col.getBoundingClientRect().top - grabOffsetPx;
+      const targetColumn = (clientX: number, clientY: number) =>
+        activeDocument.elementFromPoint(clientX, clientY)?.closest<HTMLElement>('.dtl-week-col') ?? col;
+      const calcStart = (clientY: number, target = col) => {
+        const rawTopPx = clientY - target.getBoundingClientRect().top - grabOffsetPx;
         return Math.max(0, Math.min(1440 - duration,
           Math.round(Math.max(0, rawTopPx) / this.pxPerMin / SNAP_MIN) * SNAP_MIN));
       };
 
       const onMove = (e: PointerEvent) => {
         moved = true;
-        const newStart = calcStart(e.clientY);
+        const target = targetColumn(e.clientX, e.clientY);
+        const newStart = calcStart(e.clientY, target);
         el.style.top = `${newStart * this.pxPerMin}px`;
         this.showDragTooltip(e.clientX, e.clientY,
           `${pad(Math.floor(newStart / 60))}:${pad(newStart % 60)} – ${pad(Math.floor((newStart + duration) / 60))}:${pad((newStart + duration) % 60)}`);
@@ -784,15 +826,52 @@ export class TimelineView extends ItemView {
         activeDocument.removeEventListener('pointerup', onUp);
         this.hideDragTooltip();
         if (!moved) return;
-        const newStart = calcStart(e.clientY);
-        if (newStart !== event.startMinutes) {
+        const target = targetColumn(e.clientX, e.clientY);
+        const newStart = calcStart(e.clientY, target);
+        const targetDate = target.dataset.date;
+        if (targetDate && targetDate !== sourceDay.format('YYYY-MM-DD'))
+          void this.moveEventAcrossDays(file, event, moment(targetDate, 'YYYY-MM-DD'), newStart).then(() => this.render());
+        else if (newStart !== event.startMinutes)
           void this.saveEvent(file, event, newStart, newStart + duration).then(() => this.render());
-        }
       };
 
       activeDocument.addEventListener('pointermove', onMove);
       activeDocument.addEventListener('pointerup', onUp);
     });
+  }
+
+  private async moveEventAcrossDays(sourceFile: TFile, event: ScheduleEvent, targetDay: moment.Moment, newStart: number) {
+    const targetFile = await this.dailyNotes.create(targetDay, this.plugin.settings.scheduleSection);
+    if (targetFile.path === sourceFile.path) return;
+    const duration = event.endMinutes - event.startMinutes;
+    const moved: ScheduleEvent = {
+      ...event, raw: '', sourceLine: undefined,
+      startMinutes: newStart, endMinutes: newStart + duration,
+      startHour: Math.floor(newStart / 60), startMin: newStart % 60,
+      endHour: Math.floor((newStart + duration) / 60), endMin: (newStart + duration) % 60,
+    };
+    let targetBefore = '', targetAfter = '';
+    await this.app.vault.process(targetFile, (content) => {
+      targetBefore = content;
+      targetAfter = insertEventIntoContent(content, moved, this.plugin.settings.scheduleSection);
+      return targetAfter;
+    });
+    let sourceBefore = '', sourceAfter = '';
+    await this.app.vault.process(sourceFile, (content) => {
+      sourceBefore = content;
+      sourceAfter = deleteEventFromContent(content, event.raw, event.sourceLine);
+      return sourceAfter;
+    });
+    if (sourceBefore === sourceAfter) {
+      await this.app.vault.process(targetFile, (content) => content === targetAfter ? targetBefore : content);
+      new Notice(t('staleEvent'));
+      return;
+    }
+    this.undoStack.push({ changes: [
+      { file: sourceFile, before: sourceBefore, after: sourceAfter },
+      { file: targetFile, before: targetBefore, after: targetAfter },
+    ] });
+    if (this.undoStack.length > 20) this.undoStack.shift();
   }
 
   // ─── Hover preview ghost ──────────────────────────────────────────────────────

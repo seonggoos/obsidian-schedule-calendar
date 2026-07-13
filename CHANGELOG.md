@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.3.0] - 2026-07-13
+
+### Added
+- Automatic integration with the core Daily Notes folder, date format, and template
+- Manual daily-note folder and Moment.js date-format fallback
+- Template-aware creation of missing daily notes with automatic schedule-section insertion
+- Side-by-side layout for overlapping timed events in daily and weekly views
+- Markdown checkbox completion controls for timed events
+- All-day events using checkbox entries without a time range
+- Horizontal drag between dates in weekly view, including creation of a missing target daily note
+- Conflict-safe multi-file undo for cross-day moves
+- Parser and overlap-layout regression tests for the new behavior
+
+### Changed
+- Newly created events use checkbox syntax while existing non-checkbox timed entries retain their format
+- Daily mutations refresh all event regions, including all-day events
+
+---
+
 ## [1.2.2] - 2026-07-13
 
 ### Fixed

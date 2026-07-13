@@ -3,14 +3,18 @@ import type TimelinePlugin from './main';
 import { t } from './i18n';
 
 export interface TimelineSettings {
+  dailyNoteSource: 'auto' | 'manual';
   scheduleSection: string;
   dailyNotePath: string;
+  dailyNoteFormat: string;
   defaultDuration: number; // minutes
 }
 
 export const DEFAULT_SETTINGS: TimelineSettings = {
+  dailyNoteSource: 'auto',
   scheduleSection: 'Schedule',
   dailyNotePath: '30.Calendar/31.Daily/',
+  dailyNoteFormat: 'YYYY-MM-DD',
   defaultDuration: 30,
 };
 
@@ -23,6 +27,19 @@ export class TimelineSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     new Setting(containerEl).setName(t('settings')).setHeading();
+
+    new Setting(containerEl)
+      .setName(t('dailyNoteSource'))
+      .setDesc(t('dailyNoteSourceDesc'))
+      .addDropdown((drop) => drop
+        .addOption('auto', t('automatic'))
+        .addOption('manual', t('manual'))
+        .setValue(this.plugin.settings.dailyNoteSource)
+        .onChange(async (value) => {
+          this.plugin.settings.dailyNoteSource = value === 'manual' ? 'manual' : 'auto';
+          await this.plugin.saveSettings();
+          this.display();
+        }));
 
     new Setting(containerEl)
       .setName(t('scheduleSection'))
@@ -61,6 +78,7 @@ export class TimelineSettingTab extends PluginSettingTab {
         text
           .setPlaceholder(DEFAULT_SETTINGS.dailyNotePath)
           .setValue(this.plugin.settings.dailyNotePath)
+          .setDisabled(this.plugin.settings.dailyNoteSource === 'auto')
           .onChange(async (value) => {
             let path = value.trim();
             if (path && !path.endsWith('/')) path += '/';
@@ -68,5 +86,17 @@ export class TimelineSettingTab extends PluginSettingTab {
             await this.plugin.saveSettings();
           })
       );
+
+    new Setting(containerEl)
+      .setName(t('dateFormat'))
+      .setDesc(t('dateFormatDesc'))
+      .addText((text) => text
+        .setPlaceholder(DEFAULT_SETTINGS.dailyNoteFormat)
+        .setValue(this.plugin.settings.dailyNoteFormat)
+        .setDisabled(this.plugin.settings.dailyNoteSource === 'auto')
+        .onChange(async (value) => {
+          this.plugin.settings.dailyNoteFormat = value.trim() || 'YYYY-MM-DD';
+          await this.plugin.saveSettings();
+        }));
   }
 }
