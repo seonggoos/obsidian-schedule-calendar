@@ -1,5 +1,8 @@
 # AGENTS.md — obsidian-schedule-calendar
 
+> **볼트 노트**: `~/Documents/Space/second/Projects/2026-05~ 프로덕트 옵시디언 스케줄 캘린더.md`
+> 일정·결정·진행 기록은 볼트에. 여기는 산출물만 둔다.
+
 Obsidian 플러그인 — 데일리 노트의 `### Schedule` 항목을 드래그 가능한 타임라인 캘린더로 렌더.
 (폴더·플러그인·레포명은 `obsidian-schedule-calendar`.)
 사람용 기능·설치·설정은 `README.md` 참조.
